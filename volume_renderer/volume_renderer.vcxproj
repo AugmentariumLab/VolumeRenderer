@@ -129,19 +129,20 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="DebugTimer.h" />
+    <ClInclude Include="VolumeKdtree.h" />
     <ClInclude Include="ShaderProgram.h" />
+    <ClInclude Include="TwoBitArray.h" />
     <ClInclude Include="UnitBrick.h" />
     <ClInclude Include="VolumeReader.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="DebugTimer.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="VolumeKdtree.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="raycaster.frag" />
     <None Include="raycaster.vert" />
-    <None Include="Volume.frag" />
-    <None Include="Volume.vert" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

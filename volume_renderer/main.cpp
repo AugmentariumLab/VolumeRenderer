@@ -1,10 +1,13 @@
 #include <vector>
 #include <map>
+#include <iterator>
+#include <numeric>
 
 #include "VolumeReader.h"
 #include "ShaderProgram.h"
 #include "UnitBrick.h"
 #include "DebugTimer.h"
+#include "VolumeKdtree.h"
 
 // GLEW
 #define GLEW_STATIC
@@ -62,8 +65,8 @@ void fillVolumeBrickMap();
 const char* vertFile = ".\\raycaster.vert";
 const char* fragFile = ".\\raycaster.frag";
 
-unsigned int VOLUME_DIM[3] = { 256, 256, 128 };
-unsigned int VOLUME_GRID[3] = { 8, 8, 15 };
+int64_t BRICK_DIM[3] = { 256, 256, 128 };
+int64_t VOLUME_GRID[3] = { 8, 8, 15 };
 
 std::map<int, dim3D> volumeBrickMap;
 
@@ -126,11 +129,27 @@ int main() {
 	/***** Store Volume Data as 3D Texture *****/
 
 	fillVolumeBrickMap();
-	VolumeReader<GLubyte> volume(VOLUME_DIM, VOLUME_GRID,
+	VolumeReader<GLubyte> volume(BRICK_DIM, VOLUME_GRID,
 		findBrickBinaryFile, &volumeBrickMap);
 
-	//bool texLoadSuccess = volume.LoadBrickToTexture(700, 273);
-	bool texLoadSuccess = volume.LoadBricksToTexture(448, 8, 8, 7, 273);
+	bool texLoadSuccess = volume.LoadBrickToTexture(700, 273, false);
+	//bool texLoadSuccess = volume.LoadBricksToTexture(384, 8, 8, 6, 273, false);
+	std::cout << volume.dataDims[0] << " " << volume.dataDims[1] << " " << volume.dataDims[2] << std::endl;
+
+	// test //
+	VolumeKdtree * myTree = new VolumeKdtree();
+	myTree->build(volume.data, volume.dataDims[0], volume.dataDims[1], volume.dataDims[2]);
+	std::vector<unsigned char> treeData;
+	myTree->levelCut(myTree->treeDepth, treeData);
+	std::cout << treeData.size() << " " << volume.data.size() << std::endl;
+	glTexImage3D(GL_TEXTURE_3D, 0, GL_RED, (GLsizei)volume.dataDims[0], (GLsizei)volume.dataDims[1], (GLsizei)volume.dataDims[2], 0, GL_RED, GL_UNSIGNED_BYTE, &treeData[0]);
+	//std::vector<unsigned char> diff;
+	//std::set_difference(volume.data.begin(), volume.data.end(), treeData.begin(), treeData.end(),
+	//	std::inserter(diff, diff.begin()));
+	//int64_t sumDiff = std::accumulate(diff.begin(), diff.end(), 0);
+	//std::cout << " ERROR = " << sumDiff << std::endl;
+	delete myTree;
+	
 
 	if (!texLoadSuccess) {
 		std::cin.ignore();
@@ -156,8 +175,9 @@ int main() {
 	shaderProgram.addUniform("step_size");
 	shaderProgram.addUniform("TransformationMatrix");
 
-	glUniform3f(shaderProgram.uniforms["step_size"], 1.0f / (float)VOLUME_DIM[0], 
-		1.0f / (float)VOLUME_DIM[1], 1.0f / (float)VOLUME_DIM[2]);
+	// Note: step size should be adjusted based on volume size, but be careful of fps
+	glUniform3f(shaderProgram.uniforms["step_size"], 1.0f / (float)BRICK_DIM[0],
+		1.0f / (float)BRICK_DIM[1], 1.0f / (float)BRICK_DIM[2]);
 	glUniform1i(shaderProgram.uniforms["volume"], 0);
 
 

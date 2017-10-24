@@ -119,7 +119,7 @@ public:
 		for (i = 0; i < 3; i++)
 			glDeleteShader(shaderIds[i]);
 
-		return (bool)success;
+		return (bool) (success == 1);
 	}
 
 	void addUniform(const std::string& uniform) {

@@ -15,7 +15,7 @@
 #define GLEW_STATIC
 #include <GL/glew.h>
 
-typedef unsigned int dim3D[3]; // (X,Y,Z)
+typedef int64_t dim3D[3]; // (X,Y,Z)
 
 
 /**
@@ -42,6 +42,15 @@ public:
 	
 	/* Map from brick # to I,J,K coords of brick grid*/
 	std::map<int, dim3D> * brickMap;
+
+	/* The loaded volume dataset */
+	std::vector<T> data;
+
+	/* Dimensions of 'data' */
+	dim3D dataDims;
+
+
+
 
 	/***** Public Functions *****/
 
@@ -78,37 +87,52 @@ public:
 		@param timestep the timestep to load.
 		@return true if brick was successfully loaded
 	*/
-	bool LoadBrickToTexture(int brick, int timestep) {
+	bool LoadBrickToTexture(int brick, int timestep, bool dealloc) {
 		
 		// load brick data to 'tempBrick' vector
 		bool loadSuccess = LoadVolumeFromBinaryFile(findSourceFile(brick, timestep));
+		tempBrick.swap(data);
+		memcpy(dataDims, brickDims, sizeof(dim3D));
 
 		if (loadSuccess) {
-			// Create OpenGL 3D Texture
-			glGenTextures(1, &textureId);
-			glBindTexture(GL_TEXTURE_3D, textureId);
-
-			// Set the texture parameters
-			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP);
-			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP);
-			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP);
-			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-
-			// Load data vector into 3D Texture
-			glTexImage3D(GL_TEXTURE_3D, 0, GL_RED, (GLsizei)brickDims[0], (GLsizei)brickDims[1], (GLsizei)brickDims[2], 0, GL_RED, GL_UNSIGNED_BYTE, &tempBrick[0]);
-
-			// Generate Mipmaps
-			glGenerateMipmap(GL_TEXTURE_3D);
-
-			// Deallocate temporary vector
-			std::vector<T>().swap(tempBrick);
+			transferToGPU(dealloc);
 		}
 		else {
 			std::cout << "ERROR! Texture load failure!" << std::endl;
 		}
 
 		return loadSuccess;
+	}
+
+	/**
+		Transfer temporary 'data' vector to GPU in 3D texture.
+
+		@param dealloc true if deallocating CPU vectors
+	*/
+	void transferToGPU(bool dealloc = true) {
+		// Create OpenGL 3D Texture
+		glGenTextures(1, &textureId);
+		glBindTexture(GL_TEXTURE_3D, textureId);
+
+		// Set the texture parameters
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
+		// Load data vector into 3D Texture
+		glTexImage3D(GL_TEXTURE_3D, 0, GL_RED, (GLsizei)dataDims[0], (GLsizei)dataDims[1], (GLsizei)dataDims[2], 0, GL_RED, GL_UNSIGNED_BYTE, &data[0]);
+
+		// Generate Mipmaps
+		//glGenerateMipmap(GL_TEXTURE_3D);
+
+		// Deallocate temporary vectors
+		if (dealloc) {
+			std::vector<T>().swap(data);
+			std::vector<T>().swap(tempBrick);
+		}
+		
 	}
 
 	/** 
@@ -122,18 +146,18 @@ public:
 		@return true if all bricks were successfully loaded.
 
 	*/
-	bool LoadBricksToTexture(int64_t numBricks, int64_t I, int64_t J, int64_t K, int timestep) {
+	bool LoadBricksToTexture(int64_t numBricks, int64_t I, int64_t J, int64_t K, int timestep, bool dealloc) {
 
 		// For easy reference
-		int64_t X = brickDims[0];
-		int64_t Y = brickDims[1];
-		int64_t Z = brickDims[2];
-		int64_t XY = X*Y;
-		int64_t XYZ = XY * Z;
-		int64_t XYZIJ = XYZ * I * J;
-		int64_t XYI = XY * I;
-		int64_t XI = X * I;
-		int64_t XYIJ = XY * I * J;
+		const int64_t X = brickDims[0];
+		const int64_t Y = brickDims[1];
+		const int64_t Z = brickDims[2];
+		const int64_t XY = X*Y;
+		const int64_t XYZ = XY * Z;
+		const int64_t XYZIJ = XYZ * I * J;
+		const int64_t XYI = XY * I;
+		const int64_t XI = X * I;
+		const int64_t XYIJ = XY * I * J;
 
 		// Make sure every file load is successful
 		bool success = true;
@@ -146,12 +170,12 @@ public:
 		for (int b = 0; b < numBricks; b++){
 
 			// For easy reference, (i,j,k) coordinate of the brick
-			unsigned int i = (*brickMap)[b][0];
-			unsigned int j = (*brickMap)[b][1];
-			unsigned int k = (*brickMap)[b][2];
+			int64_t i = (*brickMap)[b][0];
+			int64_t j = (*brickMap)[b][1];
+			int64_t k = (*brickMap)[b][2];
 
 			// Load brick data
-			success *= LoadVolumeFromBinaryFile(findSourceFile(b, timestep));
+			success &= LoadVolumeFromBinaryFile(findSourceFile(b, timestep));
 
 			if (success) {
 				// Calculate shift in global 'data' array index from (i,j,k) coordinate
@@ -185,31 +209,12 @@ public:
 		}
 
 		// Find new volume dimensions
-		GLuint64 volumeX = I * X;
-		GLuint64 volumeY = J * Y;
-		GLuint64 volumeZ = K * Z;
-		std::cout << "TEXTURE SIZE: " << (double)(volumeX * volumeY * volumeZ) / 1e9 << " GB" << std::endl;
+		dataDims[0] = I * X;
+		dataDims[1] = J * Y;
+		dataDims[2] = K * Z;
+		std::cout << "TEXTURE SIZE: " << (double)(dataDims[0] * dataDims[1] * dataDims[2]) / 1e9 << " GB" << std::endl;
 
-		// Create OpenGL 3D Texture
-		glGenTextures(1, &textureId);
-		glBindTexture(GL_TEXTURE_3D, textureId);
-
-		// Set the texture parameters
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP);
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP);
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP);
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-
-		// Load data vector into 3D Texture
-		glTexImage3D(GL_TEXTURE_3D, 0, GL_RED, volumeX, volumeY, volumeZ, 0, GL_RED, GL_UNSIGNED_BYTE, &data[0]);
-
-		// Generate Mipmaps
-		//glGenerateMipmap(GL_TEXTURE_3D);
-
-		// Deallocate temporary vectors
-		std::vector<T>().swap(data);
-		std::vector<T>().swap(tempBrick);
+		transferToGPU(dealloc);
 
 		return success;
 	}
@@ -219,8 +224,10 @@ private:
 	/***** Private Attributes *****/
 
 	/* Temporary buffers */
-	std::vector<T> data; // holds full dataset for transfer to GPU
+	
 	std::vector<T> tempBrick; // holds single brick
+
+
 
 	/***** Private Functions *****/
 
