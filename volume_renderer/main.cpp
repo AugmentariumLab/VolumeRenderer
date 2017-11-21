@@ -7,7 +7,7 @@
 #include "ShaderProgram.h"
 #include "UnitBrick.h"
 #include "DebugTimer.h"
-#include "VolumeKdtree.h"
+#include "VolumeKdtreeSimple.h"
 
 // GLEW
 #define GLEW_STATIC
@@ -132,29 +132,42 @@ int main() {
 	VolumeReader<GLubyte> volume(BRICK_DIM, VOLUME_GRID,
 		findBrickBinaryFile, &volumeBrickMap);
 
+
 	bool texLoadSuccess = volume.LoadBrickToTexture(700, 273, false);
+	//bool texLoadSuccess = volume.LoadBricksToTexture(256, 8, 8, 4, 273, false);
 	//bool texLoadSuccess = volume.LoadBricksToTexture(384, 8, 8, 6, 273, false);
 	std::cout << volume.dataDims[0] << " " << volume.dataDims[1] << " " << volume.dataDims[2] << std::endl;
-
+	std::cout << volume.data.size() << std::endl;
 	// test //
-	VolumeKdtree * myTree = new VolumeKdtree();
-	myTree->build(volume.data, volume.dataDims[0], volume.dataDims[1], volume.dataDims[2]);
+	//VolumeKdtree * myTree = new VolumeKdtree();
+	VolumeKdtreeSimple * myTree = new VolumeKdtreeSimple(volume.data, volume.dataDims[0], volume.dataDims[1], volume.dataDims[2]);
+	myTree->build();
+	myTree->save("tree_brick.bin");
+	//myTree->open("tree_brick.bin");
+	//myTree->save("tree256.bin");
+	//myTree->open("tree256.bin");
 	std::vector<unsigned char> treeData;
 	myTree->levelCut(myTree->treeDepth, treeData);
-	std::cout << treeData.size() << " " << volume.data.size() << std::endl;
+	std::cout << "MAX ERROR: " << myTree->measureMaxError() << std::endl;
+	std::cout << "MEAN ERROR: " << myTree->measureMeanError() << std::endl;
+	//std::vector<unsigned char> errorData;
+	//myTree->queryError(errorData);
+	//std::cout << treeData.size() << " " << volume.data.size() << std::endl;
 	glTexImage3D(GL_TEXTURE_3D, 0, GL_RED, (GLsizei)volume.dataDims[0], (GLsizei)volume.dataDims[1], (GLsizei)volume.dataDims[2], 0, GL_RED, GL_UNSIGNED_BYTE, &treeData[0]);
+	//glTexImage3D(GL_TEXTURE_3D, 0, GL_RED, (GLsizei)volume.dataDims[0], (GLsizei)volume.dataDims[1], (GLsizei)volume.dataDims[2], 0, GL_RED, GL_UNSIGNED_BYTE, &errorData[0]);
 	//std::vector<unsigned char> diff;
 	//std::set_difference(volume.data.begin(), volume.data.end(), treeData.begin(), treeData.end(),
 	//	std::inserter(diff, diff.begin()));
 	//int64_t sumDiff = std::accumulate(diff.begin(), diff.end(), 0);
 	//std::cout << " ERROR = " << sumDiff << std::endl;
+
 	delete myTree;
 	
 
-	if (!texLoadSuccess) {
-		std::cin.ignore();
-		exit(-1);
-	}
+	//if (!texLoadSuccess) {
+	//	std::cin.ignore();
+	//	exit(-1);
+	//}
 
 	//std::cout << "texture check" << std::endl;
 	handleGLerrors(glGetError());
@@ -242,7 +255,7 @@ int main() {
 		handleGLerrors(glGetError());
 
 		glFinish();
-		DebugTimer::End("LOOP");
+    		DebugTimer::End("LOOP");
 		glfwSwapBuffers(window);
 	}
 
