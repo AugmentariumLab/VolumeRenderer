@@ -7,7 +7,7 @@
 #include "ShaderProgram.h"
 #include "UnitBrick.h"
 #include "DebugTimer.h"
-#include "VolumeKdtreeSimple.h"
+#include "VolumeKdTree.h"
 
 // GLEW
 #define GLEW_STATIC
@@ -140,7 +140,7 @@ int main() {
 	std::cout << volume.data.size() << std::endl;
 	// test //
 	//VolumeKdtree * myTree = new VolumeKdtree();
-	VolumeKdtreeSimple * myTree = new VolumeKdtreeSimple(volume.data, volume.dataDims[0], volume.dataDims[1], volume.dataDims[2]);
+	VolumeKdtree * myTree = new VolumeKdtree(volume.data, volume.dataDims[0], volume.dataDims[1], volume.dataDims[2]);
 	myTree->build();
 	myTree->save("tree_brick.bin");
 	//myTree->open("tree_brick.bin");

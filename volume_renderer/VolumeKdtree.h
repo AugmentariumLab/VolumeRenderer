@@ -11,80 +11,12 @@
 
 
 typedef unsigned char byte;
-typedef TPoint<float, 3> Point3f;
 typedef TPoint<int64_t, 3> Point3i;
 
 /**
-	Struct BoundingBox.
-	A bounding box for cells in volume dataset.
-*/
-struct BoundingBox {
-	Point3f min; // minimum point defining bounding box
-	Point3f max; // maximum point defining bounding box
-	Point3i volMin; // minimum coordinate of volume 
-	Point3i volMax; // maximum coordinate of volume 
-
-	// Construct a collapsed default box at (0,0,0)
-	BoundingBox() : min(0.0f), max(0.0f), volMin(0), volMax(0) { }
-
-	// Construct a bounding box from two points
-	BoundingBox(const Point3f &minP, const Point3f &maxP, 
-		const Point3i &volMin, const Point3i &volMax) : 
-		min(minP), max(maxP), volMin(volMin), volMax(volMax) { }
-
-	// Returns X,Y,Z extents of bounding box
-	Point3f getExtents() {
-		return max - min;
-	}
-
-	// Return the position of a bounding box corner
-	Point3f getCorner(int index) {
-		Point3f corner;
-		for (int i = 0; i<3; ++i)
-			corner[i] = (index & (1 << i)) ? max[i] : min[i];
-		return corner;
-	}
-
-	// Return the volume of the bounding box
-	float getVolume() {
-		return (max - min).prod();
-	}
-
-	// Return number of cells the box encompasses in original volume
-	int64_t getNumCells() {
-		return (volMax- volMin + Point3i(1, 1, 1)).prod();
-	}
-
-	// Return the center point of the bounding box 
-	Point3f getCenter() {
-		return (max + min) * 0.5f;
-	}
-
-	// Print a string representation of the bounding box
-	void print() {
-		std::cout << "Box[min= (" << min[0] << " " << min[1] << " " << min[2] << "), max= (";
-		std::cout << max[0] << " " << max[1] << " " << max[2] << ")" << std::endl;
-		std::cout << "volMin = (" << volMin[0] << " " << volMin[1] << " " << volMin[2] << "), volMax = (";
-		std::cout << volMax[0] << " " << volMax[1] << " " << volMax[2] << ")" << std::endl;
-	}
-};
-
-#pragma pack(push, 1)
-struct TempNode {
-	byte parentScalar; // scalar value of node's parent
-	byte scalar; // average scalar value in bounding box
-
-	TempNode() : parentScalar(0), scalar(0) {}
-
-	TempNode(byte pS, byte s) : parentScalar(pS), scalar(s) {}
-};
-#pragma pack(pop)
-
-
-/**
 *	Class VolumeKdtree
-*	Constructs a 3D kd-tree from input volume dataset.
-*	Tree is stored in an implicit 2-bit array representing compressed scalar values. 
+*	Constructs a full 3D kd-tree from input volume dataset.
+*	Tree is stored in an implicit 2-bit array representing progressively compressed scalar values.
 *
 */
 class VolumeKdtree {
@@ -93,7 +25,8 @@ public:
 	/***** Public Members *****/
 
 	/* Root Bounding Box */
-	BoundingBox rootBox;
+	Point3i rootMin;
+	Point3i rootMax;
 
 	/* 2-bit nodes represent change in scalar value from parent to child */
 	TwoBitArray tree;
@@ -101,144 +34,168 @@ public:
 	/* Map from tree depth to distance in scalar values from parent to child */
 	std::vector<byte> distanceMap;
 
-	/* Depth of tree (does not count root) */
+	/* Depth of tree (does not include root level) */
 	int treeDepth;
-
-	/* Depth of tree in which a node represents 1 cell in volume */
-	//int oneCellDepth;
 
 	/* Dimensions of original volume data */
 	int64_t X, Y, Z;
 
+	/* Buffers for queries */
+	std::vector<byte> * output;
+	std::vector<byte> * output2;
+	int queryDepth;
 
-	double mse;
-	double maxError;
+
 
 	/***** Public Functions *****/
 
-	/* Constructor */
+	/* Default Constructor */
 	VolumeKdtree() { 
-		added = false;}
+		rootMin = 0; 
+		rootMax = 0;
+	}
+
+	VolumeKdtree(std::vector<byte> &inData, int64_t x, int64_t y, int64_t z) {
+		data = &inData;
+		X = x;
+		Y = y;
+		Z = z;
+		rootMin = 0;
+		rootMax = { X,Y,Z };
+	}
 
 	/* Deconstructor */
 	~VolumeKdtree() {
-		std::vector<byte>().swap(distanceMap);
 		std::vector<double>().swap(distanceSums);
-		std::vector<double>().swap(nonzeroNodeCounts);
-		std::vector<TempNode>().swap(tempTree);
-		//free(tree);
-		tree = NULL;
+		std::vector<double>().swap(distanceCounts);
+		std::vector<byte>().swap(distanceMap);
+		std::vector<byte>().swap(temp);
+		//delete &tree;
 	}
 
 	/**
-		Builds octree from input volume dataset.
+	Builds octree from input volume dataset.
 
-		@param inData - pointer to original volume dataset in 1-D array
-		@param X - number of cells along x-axis of dataset
-		@param Y - number of cells along y-axis of dataset
-		@param Z - number of cells along z-axis of dataset
+	@param inData - pointer to original volume dataset in 1-D array
+	@param X - number of cells along x-axis of dataset
+	@param Y - number of cells along y-axis of dataset
+	@param Z - number of cells along z-axis of dataset
 	*/
-	void build(std::vector<byte> &inData, int64_t X, int64_t Y, int64_t Z);
+	void build();
 
+	/**
+	Return nodes at specific level of the tree.
+
+	@param cutDepth - desired level of tree.
+	@param outData - pointer to output buffer.
+	*/
 	void levelCut(int cutDepth, std::vector<byte> &outData);
 
-	/* Writes class to binary file */
+	/**
+	Calculate maximum cell error.
+
+	@return maximum L1 error between query data and original dataset.
+	*/
+	int measureMaxError();
+
+	/**
+	Calculates mean cell error.
+
+	@return mean L1 error between query data and original dataset.
+	*/
+	double measureMeanError();
+
+	void queryError(std::vector<byte> &outData);
+
+	/**
+	Writes class to binary file.
+
+	@param filename Path of output binary file.
+	*/
 	void save(std::string filename);
 
-	/* Opens serialized class from binary file */
-	void open(std::string filename); 
+	/**
+	Opens serialized class from binary file 
+
+	@param filename Path of input binary file.
+	*/
+	void open(std::string filename);
 
 
 private:
 
 	/***** Private Members *****/
 
-	bool added;
-
 	/* Temporary tree for contruction (before compression) */
-	std::vector<TempNode> tempTree;
+	std::vector<byte> temp;
 
 	/* Pointer to original volume data */
 	std::vector<byte> * data;
 
-	/* Map from depth to sum of distances from parents */
-	std::vector<double> distanceSums;
-
-	/* Map from depth to number of non-zero nodes 
-	(nodes that have some significant change from parent) */
-	std::vector<double> nonzeroNodeCounts;
-
 	/* 3-D tree */
 	static int const MAX_DIM = 3;
 
+	/* Temporary vectors for distanceMap construction */
+	std::vector<double> distanceSums;
+	std::vector<double> distanceCounts;
 
-	int64_t numZeroNodes;
+
 
 	/***** Private Functions *****/
 
-	/** 
-		Recursive tree building function, called by build() function.
-		Populates a node and recurses on node's children.
-		
-		@param idx - Node index
-		@param depth - Node depth in tree
-		@param box - Bounding box of node
-		@param parentScalar - scalar value of Node's parent
+	/**
+	Recursive tree building function.
+	Populates a node and recurses on node's children.
+
+	@param idx Node index.
+	@param depth Depth of node in the tree.
+	@param minBound 3D point defining minimum coordinate of node's bounding box.
+	@param maxBound 3D point defining maximum coordinate of node's bounding box.
+	@param decodedParent scalar value of node's parent as estimated by decoder.
 	*/
-	void buildRecursive(int64_t idx, int depth, BoundingBox box, byte parentScalar);
+	void buildRecursive(int64_t idx, int depth, Point3i minBound, Point3i maxBound, byte decodedParent);
+
+	//void levelCutRecursiveUncompressed(int64_t idx, int depth, Point3i minBound, Point3i maxBound);
+	void levelCutRecursive(int64_t idx, int depth, Point3i minBound, Point3i maxBound, byte parentEstimate);
 
 	/**
-		Encodes 2-bit delta scalar value. 
-		Delta Codes:
-			0 = no change
-			1 = add distance
-			2 = subtract distance
-			3 = no change & no children
+	Assigns 2-bit code to tree node & returns decoded scalar value for that node.
 
-		@param idx Node index.
-		@param depth Node depth in tree.
-		@param parent Scalar value of Node's parent.
-		@param estimate Estimate of Node's scalar value, as encoded by 2-bit delta (out value).
-		@param useMap True if using a populated distanceMap.
+	@param idx Node Index.
+	@param depth Depth of node in the tree.
+	@param decodedParent scalar value of node's parent as estimated by decoder.
+	@param useMap True is using populated distanceMap.
 
-		@return 2-bit delta code
+	@return Node's scalar value as estimated by decoder.
 	*/
-	byte encodeDeltaScalar(int64_t idx, int depth, byte parent, byte &estimate, bool useMap);
+	byte encodeNode(int64_t idx, int depth, byte decodedParent, bool useMap);
 
 	/**
-		Return cell index into 1-D buffer of 3-D volume.
+	Return cell index into 1-D buffer of 3-D volume.
 
-		@param x x-coordinate.
-		@param y y-coordinate.
-		@param z z-coordinate.
+	@param x x-coordinate.
+	@param y y-coordinate.
+	@param z z-coordinate.
 
-		@return cell index into data array
+	@return cell index into data array
 	*/
 	inline int64_t getCell(int64_t x, int64_t y, int64_t z);
 
+
 	/**
-		Convert tree from temporary 2-byte representation to 2-bit representation.
+	Recursive compression function.
+	Assigns a delta scalar code value to a node.
+
+	@param idx Node Index.
+	@param depth Depth of node in the tree.
 	*/
-	void compressTree(bool computeMap);
+	void compressTreeRecursive(int64_t idx, int depth, byte compressedParent);
 
-	/** 
-		Recursive compression function, called from compressTree().
-		Assigns a delta scalar code value to a node.
+	void addLevels(int numLevels);
 
-		@param idx Node Index.
-		@param depth Depth of node in the tree.
-	*/
-	void compressTreeRecursive(int64_t idx, int depth);
+	void buildFromLeaves(int64_t idx, int depth, Point3i minBound, Point3i maxBound, byte compressedParent, int leafDepth);
 
-	void levelCutRecursive(int64_t idx, int depth, byte parentScalar, BoundingBox box, 
-		int cutDepth, std::vector<double> &sumData, std::vector<double> &countData);
-
-	//void addLevels(int numLevels);
-
-	void buildFromLeaves(int64_t idx, int depth, byte parentScalar, BoundingBox box, int leafDepth);
-
-	/* Prunes compressed tree using the 3 code. */
-	void pruneTree();
+	void compressFromLeaves(int64_t idx, int depth, byte compressedParent, int leafDepth);
 };
 
 #endif VOLUME_OCTREE_H

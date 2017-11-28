@@ -5,33 +5,18 @@ inline int64_t VolumeKdtree::getCell(int64_t x, int64_t y, int64_t z) {
 	return x + (X*y) + (X*Y*z);
 }
 
-
-void VolumeKdtree::build(std::vector<byte> &inData, int64_t x, int64_t y, int64_t z) {
-
-	// Assign values to data-dependent class members
-	data = &inData;
-	X = x;
-	Y = y;
-	Z = z;
-	rootBox.max[0] = (float)x;
-	rootBox.max[1] = (float)y;
-	rootBox.max[2] = (float)z;
-	rootBox.volMax[0] = rootBox.max[0] - 1;
-	rootBox.volMax[1] = rootBox.max[1] - 1;
-	rootBox.volMax[2] = rootBox.max[2] - 1;
+void VolumeKdtree::build() {
 
 	// Analyze input data dimensions to define size of kd-tree
 	int numXsplits = (int)(log(X) / log(2));
 	int numYsplits = (int)(log(Y) / log(2));
 	int numZsplits = (int)(log(Z) / log(2));
-	//oneCellDepth = numXsplits + numYsplits + numZsplits; // numTotalSplits (not counting root)
 	treeDepth = numXsplits + numYsplits + numZsplits; // total number of splits (not counting root)
-	
 	distanceMap.resize(treeDepth + 1, 0); // treeDepth + root
-	distanceSums.resize(treeDepth + 1, 0.0);
-	nonzeroNodeCounts.resize(treeDepth + 1, 0.0);
-	int64_t numNodes = (int64_t)(pow(2.0, (double)treeDepth + 1.0) - 1.0);
-	tempTree.resize(numNodes);
+	distanceSums.resize(treeDepth + 1, 0.0); // treeDepth + root
+	distanceCounts.resize(treeDepth + 1, 0.0); // treeDepth + root
+	int64_t numNodes = (int64_t)pow(2, treeDepth + 1) - 1;
+	temp.resize(numNodes);
 	tree.resize(numNodes);
 
 	// Print tree info
@@ -39,366 +24,287 @@ void VolumeKdtree::build(std::vector<byte> &inData, int64_t x, int64_t y, int64_
 	std::cout << "Number of nodes: " << numNodes << std::endl;
 	std::cout << "Estimated Tree Size : " << (numNodes * (2.0 / 8.0)) / 1e9 << " GB" << std::endl;
 
-	// Call recursive build function from root - builds tempTree
-	buildRecursive((int64_t)0, 0, rootBox, 0);
+	// Call recursive build function starting from root
+	buildRecursive(0, 0, rootMin, rootMax, 0);
 
-	// Compress the temporary tree
-	compressTree(true);
-
-	// print info
-	std::cout << "Tree Size: " << (double)tree.bytes() / 1e9 << " GB" << std::endl;
-	for (int i = 0; i < treeDepth + 1; i++) {
-		std::cout << (int)distanceMap[i] << std::endl;
+	// Compute Distance Map
+	for (int depth = 0; depth < treeDepth + 1; depth++) {
+		distanceMap[depth] = (byte)(distanceSums[depth] / distanceCounts[depth]);
 	}
+	std::vector<double>().swap(distanceSums);
+	std::vector<double>().swap(distanceCounts);
+	
+
+	//Fix Distance Map
+	//int cycle[] = { 1,2,4,8,16,32,64,128 };
+	/*
+	int cycle[] = { 128,64,32,16,8,4,2,1 };
+	for (int depth = 0; depth < treeDepth + 1; depth++) {
+		//distanceMap[depth] = pow(2, cycle[depth % 7]);
+		distanceMap[depth] = cycle[depth % 8];
+	}
+	*/
+	
+	/*
+	int cycle[] = { 128,64,32,16,8,4,2,1 };
+	for (int depth = treeDepth - 7; depth < treeDepth + 1; depth++) {
+		//distanceMap[depth] = pow(2, cycle[depth % 7]);
+		distanceMap[depth] = cycle[depth % 8];
+	}
+	*/
+
+	
+
+	// 2nd pass of compression
+	compressTreeRecursive(0, 0, 0);
+
+	// add additional levels
+	for (int depth = 0; depth < treeDepth + 1; depth++) {
+		std::cout << (int)distanceMap[depth] << std::endl;
+	}
+	//addLevels(2);
+	//for (int depth = 0; depth < treeDepth + 1; depth++) {
+	//	std::cout << (int)distanceMap[depth] << std::endl;
+	//}
+
+
+	// delete temporary tree
+	std::vector<byte>().swap(temp);
 }
 
-void VolumeKdtree::buildRecursive(int64_t idx, int depth, BoundingBox box, byte parentScalar) {
-
-	tempTree[idx].parentScalar = parentScalar;
+void VolumeKdtree::buildRecursive(int64_t idx, int depth, Point3i minBound, 
+	Point3i maxBound, byte parentEstimate) {
 
 	// Loop through volume cells within bounding box & sum all scalar values
-	double sumScalar = 0;
-	for (int64_t x = box.volMin[0]; x < box.volMax[0] + 1; x++) {
-		for (int64_t y = box.volMin[1]; y < box.volMax[1] + 1; y++) {
-			for (int64_t z = box.volMin[2]; z < box.volMax[2] + 1; z++) {
+	double sumScalar = 0.0;
+	double maxScalar = 0.0;
+	double minScalar = 255.0;
+	for (int64_t x = minBound[0]; x < maxBound[0]; x++) {
+		for (int64_t y = minBound[1]; y < maxBound[1]; y++) {
+			for (int64_t z = minBound[2]; z < maxBound[2]; z++) {
 				sumScalar += (double)(*data)[getCell(x, y, z)];
+				maxScalar = std::max(maxScalar, (double)(*data)[getCell(x, y, z)]);
+				minScalar = std::min(minScalar, (double)(*data)[getCell(x, y, z)]);
 			}
 		}
 	}
 
 	// Compute average scalar value of all volume cells
-	tempTree[idx].scalar = (byte)(sumScalar / (double)box.getNumCells());
+	Point3i extent = maxBound - minBound;
+	int64_t numCells = extent.prod();
+	//temp[idx] = (byte)(sumScalar / numCells);
+	temp[idx] = (byte)((maxScalar + minScalar) / 2.0);
 
-	// 1st pass of compression: record delta scalar stat
-	byte estScalar;
-	encodeDeltaScalar(idx, depth, parentScalar, estScalar, false);
+	// 1st pass of compression: populate distance map
+	byte scalarEstimate = encodeNode(idx, depth, parentEstimate, false);
 
 	// Recurse on children if not at maximum tree depth
 	if (depth < treeDepth) {
-		int splitDim = depth % MAX_DIM;
-		Point3f extent = box.getExtents();
 
-		// try to achieve full resolution first
-		if (extent.prod() > 1.0f) {
-			while (extent[splitDim] == 1) {
-				splitDim = splitDim == 2 ? 0 : splitDim + 1;
+		// Do NOT split bounding box if only 1 cell is enclosed
+		if (numCells == 1) {
+			buildRecursive(2 * idx + 1, depth + 1, minBound, maxBound, scalarEstimate); // left
+			buildRecursive(2 * idx + 2, depth + 1, minBound, maxBound, scalarEstimate); // right
+		}
+
+		else {
+			int splitDim = depth % MAX_DIM;
+
+			// Choose split dimension to acheive full resolution
+			int i = 0;
+			while (numCells > 1 && extent[splitDim] == 1) {
+				splitDim = (depth + ++i) % MAX_DIM;
 			}
-		}
-		
-		float thisMid = (box.min[splitDim] + box.max[splitDim]) / 2.0f;
-		float thisMax = box.max[splitDim];
 
-		// left child
-		box.max[splitDim] = thisMid;
-		if (extent[splitDim] > 1)
-			box.volMax[splitDim] = box.max[splitDim] - 1;
-		buildRecursive((2 * idx) + 1, depth + 1, box, estScalar);
+			// Split Bounding box 
+			int64_t thisMid = (minBound[splitDim] + maxBound[splitDim]) / 2;
+			int64_t thisMax = maxBound[splitDim];
 
-		// right child
-		box.min[splitDim] = thisMid;
-		box.max[splitDim] = thisMax;
-		if (extent[splitDim] > 1) {
-			box.volMin[splitDim] = thisMid;
-			box.volMax[splitDim] = thisMax - 1;
-		}
-		buildRecursive((2 * idx) + 2, depth + 1, box, estScalar);
-	}  
-	
+			// left child
+			maxBound[splitDim] = thisMid;
+			buildRecursive(2 * idx + 1, depth + 1, minBound, maxBound, scalarEstimate);
 
-}
+			// right child
+			minBound[splitDim] = thisMid;
+			maxBound[splitDim] = thisMax;
+			buildRecursive(2 * idx + 2, depth + 1, minBound, maxBound, scalarEstimate);
 
-byte VolumeKdtree::encodeDeltaScalar(int64_t idx, int depth,
-	byte parent, byte &estimate, bool useMap) {
-
-	// For easy reference
-	byte truth = tempTree[idx].scalar;
-
-	// Compute sclar difference between parent node and current node
-	int delta = (int)truth - (int)parent;
-	byte distance = (byte)abs(delta);
-
-	// Return 0 if no change from parent
-	if (delta == 0)
-		return 0;
-
-	// Define mapped delta based on deltaScalarMap or estimate from current available node data
-	byte mappedDistance = useMap ? distanceMap[depth] : byte(double(distanceSums[depth] + distance) 
-		/ double(nonzeroNodeCounts[depth] + 1));
-
-	// Return the delta code with the minimum error
-	byte minEstError = delta;
-	byte code = 0;
-
-	// Calculate error for each code case
-	byte nochangeError = distance;
-	byte plusEst = std::min(255, (int)parent + (int)mappedDistance);
-	byte plusError = abs(truth - plusEst);
-	byte minusEst = std::max(0, (int)parent - (int)mappedDistance);
-	byte minusError = abs(truth - minusEst);
-
-	// Return code 0 if that produces the least error
-	if ((nochangeError < plusError) && (nochangeError < minusError)) {
-		estimate = parent;
-		return 0;
-	}
-
-	// If not returning 0, update distanceSums & nonzeroNodeCounts,
-	// if distanceMap not yet populated
-	if (!useMap) {
-		distanceSums[depth] += (double)distance;
-		nonzeroNodeCounts[depth]++;
-	}
-
-	// Return code 1 if that produces less error than code 2
-	if (plusError < minusError) {
-		estimate = plusEst;
-		return 1;
-	}
-
-	// At this point, code 2 is the only case remaining
-	estimate = minusEst;
-	return 2;
-}
-
-void VolumeKdtree::compressTree(bool computeMap) {
-
-	// Populate distanceMap values from temporary vectors
-	if (computeMap) {
-		for (int depth = 0; depth <= treeDepth; depth++) {
-			distanceMap[depth] = (byte)(distanceSums[depth] / nonzeroNodeCounts[depth]);
-		}
-	}
-	
-	// Compress nodes in depth first order,starting from root
-	numZeroNodes = 0;
-	compressTreeRecursive(0, 0);
-	std::cout << "NUMBER ZERO: " << numZeroNodes << std::endl;
-
-	// average the mse
-	double numLeaves = pow(2.0, (double)treeDepth);
-	mse = mse / numLeaves;
-	std::cout << "MSE: " << mse << std::endl;
-	std::cout << "Max Error: " << maxError << std::endl;
-
-	//if (!added) {
-	//	addLevels(3);
-		//added = true;
-	//}
-
-	//pruneTree();
-
-	// deallocate space for temporary vectors
-	std::vector<TempNode>().swap(tempTree);
-	std::vector<double>().swap(nonzeroNodeCounts);
-	std::vector<double>().swap(distanceSums);
-}
-
-
-void VolumeKdtree::pruneTree() {
-	// loop thru leaf nodes
-	int64_t numNodes = (int64_t)(pow(2.0, (double)treeDepth + 1.0) - 1.0);
-	int64_t numLeaves = pow(2, treeDepth);
-	int64_t numConverted = 0;
-
-	for (int64_t i = numNodes - numLeaves; i < numNodes; i++) {
-		// get code of leaf node
-		int64_t nodeIdx = i;
-
-		// go to parent while code == 0, turning codes to 3
-		while (tree[nodeIdx] == 0) {
-			tree[nodeIdx] = 0; // CHANGE TO 3!
-			nodeIdx = (nodeIdx - 1) / 2; // index of parent node
-			numConverted++;
-		}
-
-	}
-
-	std::cout << "NUMBER CONVERTED: " << numConverted << std::endl;
-}
-/*
-void VolumeKdtree::addLevels(int numLevels) {
-
-	// increase tree depth
-	int oldDepth = treeDepth;
-	treeDepth += numLevels;
-	std::cout << "NEW DEPTH: " << treeDepth << std::endl;
-
-	// resize vectors
-	distanceMap.resize(treeDepth + 1, 0); // treeDepth + root
-	distanceSums.resize(treeDepth + 1, 0.0);
-	nonzeroNodeCounts.resize(treeDepth + 1, 0.0);
-	int64_t numNodes = (int64_t)(pow(2.0, (double)treeDepth + 1.0) - 1.0);
-	tempTree.resize(numNodes);
-	tree.resize(numNodes);
-
-	// start building from leaves of trees
-	buildFromLeaves(0, 0, 0, rootBox, oldDepth);
-	for (int i = 0; i < numLevels; i++) {
-		distanceMap[oldDepth + i + 1] = pow(2,7-i);
-	}
-
-	mse = 0;
-	maxError = 0;
-	
-	// Compress the temporary tree from leaves
-	compressTree(false);
-}
-*/
-void VolumeKdtree::buildFromLeaves(int64_t idx, int depth, byte parentScalar, BoundingBox box, int leafDepth) {
-
-	// Comput scalar for this node
-	byte scalar = parentScalar;
-	int code = tree[idx];
-	if (code == 1)
-		scalar = std::min(scalar + distanceMap[depth], 255);
-	else if (code == 2)
-		scalar = std::max(scalar - distanceMap[depth], 0);
-
-	// Subdivide node
-	int splitDim = depth % MAX_DIM;
-	Point3f extent = box.getExtents();
-
-	if (extent.prod() > 1.0f) {
-		while (extent[splitDim] == 1) {
-			splitDim = splitDim == 2 ? 0 : splitDim + 1;
-		}
-	}
-
-	float thisMid = (box.min[splitDim] + box.max[splitDim]) / 2.0f;
-	float thisMax = box.max[splitDim];
-
-	// left child
-	box.max[splitDim] = thisMid;
-	if (extent[splitDim] > 1)
-		box.volMax[splitDim] = box.max[splitDim] - 1;
-
-	if (depth == leafDepth) {
-		buildRecursive(2 * idx + 1, depth + 1, box, scalar);
-	}
-	else {
-		buildFromLeaves(2 * idx + 1, depth + 1, scalar, box, leafDepth);
-	}
-
-	// right child
-	box.min[splitDim] = thisMid;
-	box.max[splitDim] = thisMax;
-	if (extent[splitDim] > 1) {
-		box.volMin[splitDim] = thisMid;
-		box.volMax[splitDim] = thisMax - 1;
-	}
-	
-	if (depth == leafDepth) {
-		buildRecursive(2 * idx + 2, depth + 1, box, scalar);
-	}
-	else {
-		buildFromLeaves(2 * idx + 2, depth + 1, scalar, box, leafDepth);
-	}
-}
-
-void VolumeKdtree::compressTreeRecursive(int64_t idx, int depth) {
-
-	
-
-	// Find scalar value & code for current node
-	byte scalar;
-	byte code = encodeDeltaScalar(idx, depth, tempTree[idx].parentScalar, scalar, true);
-	tree[idx] = (int)code;
-	if (tree[idx] == 0)
-		numZeroNodes++;
-
-	//if (depth > 23 && tempTree[idx].parentScalar - tempTree[idx].scalar > 32) {
-	//	added = true;
-	//	std::cout << (int)tempTree[idx].scalar << " " << (int)tempTree[idx].parentScalar << " " << (int)code << " " << (int)distanceMap[depth] << std::endl;
-	//}
-
-	// Measure mse of leaf nodes
-	if (depth == treeDepth) {
-		double error = abs((double)scalar - (double)tempTree[idx].scalar);
-		mse += pow(error, 2);
-		if (error > maxError)
-			maxError = error;
-	}
-
-	if (depth < treeDepth) {
-		int64_t leftIdx = (2 * idx) + 1;
-		int64_t rightIdx = leftIdx + 1;
-
-		// Update parent color of node's children
-		tempTree[leftIdx].parentScalar = scalar;
-		tempTree[rightIdx].parentScalar = scalar;
-
-		// Recurse on children
-		compressTreeRecursive(leftIdx, depth + 1); 
-		compressTreeRecursive(rightIdx, depth + 1); 
+		}	
 	}
 }
 
 void VolumeKdtree::levelCut(int cutDepth, std::vector<byte> &outData) {
-	int64_t numOutputNodes = pow(2, cutDepth);
-	outData.resize(numOutputNodes);
-	std::vector<double> sumData(numOutputNodes);
-	std::vector<double> countData(numOutputNodes);
-	levelCutRecursive(0, 0, 0, rootBox, cutDepth, sumData, countData);
-	std::transform(sumData.begin(), sumData.end(), countData.begin(), outData.begin(), std::divides<double>());
+
+	output = &outData;
+	queryDepth = cutDepth;
+
+	// Resize output vector
+	output->resize(X*Y*Z);
+
+	// Call recursive level cut function from root
+	levelCutRecursive(0, 0, rootMin, rootMax, 0);
 }
 
-void VolumeKdtree::levelCutRecursive(int64_t idx, int depth, byte parentScalar,
-	BoundingBox box, int cutDepth, std::vector<double> &sumData, std::vector<double> &countData) {
+int VolumeKdtree::measureMaxError() {
+	int maxError = 0;
+	for (int64_t i = 0; i < X*Y*Z; i++) {
+		maxError = std::max((int)abs((double)(*output)[i] - (double)(*data)[i]), maxError);
+	}
+	return maxError;
+}
 
-	// For easy reference
-	int code = tree[idx];
-	
+double VolumeKdtree::measureMeanError() {
+	double sumError = 0.0;
+	int64_t count = X*Y*Z;
+	for (int64_t i = 0; i < count; i++) {
+		sumError += abs((double)(*output)[i] - (double)(*data)[i]);
+	}
+	return sumError / (double)count;
+}
+
+void VolumeKdtree::queryError(std::vector<byte> &outData) {
+	output2 = &outData;
+	int64_t count = X*Y*Z;
+	output2->resize(count);
+	for (int64_t i = 0; i < count; i++) {
+		(*output2)[i] = (byte)abs((double)(*output)[i] - (double)(*data)[i]);
+	}
+}
+
+void VolumeKdtree::levelCutRecursive(int64_t idx, int depth, Point3i minBound, Point3i maxBound, byte compressedParent) {
+
+	double parentEstimate = (double)compressedParent;
+	int code = (int)tree[idx];
+
 	// Compute scalar value for this node
-	byte scalar = parentScalar;
-	if (code == 1)
-		scalar = std::min(scalar + distanceMap[depth], 255);
+	byte scalar;
+	if (code == 0)
+		scalar = compressedParent;
+	else if (code == 1)
+		scalar = (byte)std::min(255.0, parentEstimate + (double)distanceMap[depth]);
 	else if (code == 2)
-		scalar = std::max(scalar - distanceMap[depth], 0);
+		scalar = (byte)std::max(0.0, parentEstimate - (double)distanceMap[depth]);
+
 
 	// Populate output vectors if at cut depth or end of tree branch
-	//if (code == 3 || depth == cutDepth) {
-	if (depth == cutDepth) {
-		//box.print();
-		for (int64_t x = box.volMin[0]; x <= box.volMax[0]; x++) {
-			for (int64_t y = box.volMin[1]; y <= box.volMax[1]; y++) {
-				for (int64_t z = box.volMin[2]; z <= box.volMax[2]; z++) {
+	if (depth == queryDepth) {
+		for (int64_t x = minBound[0]; x < maxBound[0]; x++) {
+			for (int64_t y = minBound[1]; y < maxBound[1]; y++) {
+				for (int64_t z = minBound[2]; z < maxBound[2]; z++) {
 					int64_t c = getCell(x, y, z);
-					//std::cout << c << std::endl;
-					sumData[c] += scalar;
-					countData[c]++;
+					(*output)[c] = scalar;
 				}
 			}
 		}
 		return;
 	}
 
-	// OTHERWISE, recurse
-	int splitDim = depth % MAX_DIM;
-	Point3f extent = box.getExtents();
+	// Recurse on children if not at maximum tree depth
+	if (depth < treeDepth) {
 
-	if (extent.prod() > 1.0f) {
-		while (extent[splitDim] == 1) {
-			splitDim = splitDim == 2 ? 0 : splitDim + 1;
+		Point3i extent = maxBound - minBound;
+		int64_t numCells = extent.prod();
+
+		// Do NOT split bounding box if only 1 cell is enclosed
+		if (numCells == 1) {
+			levelCutRecursive(2 * idx + 1, depth + 1, minBound, maxBound, scalar); // left
+			levelCutRecursive(2 * idx + 2, depth + 1, minBound, maxBound, scalar); // right
+		}
+
+		else {
+			int splitDim = depth % MAX_DIM;
+
+			// Choose split dimension to acheive full resolution
+			int i = 0;
+			while (numCells > 1 && extent[splitDim] == 1) {
+				splitDim = (depth + ++i) % MAX_DIM;
+			}
+
+			// Split Bounding box 
+			int64_t thisMid = (minBound[splitDim] + maxBound[splitDim]) / 2;
+			int64_t thisMax = maxBound[splitDim];
+
+			// left child
+			maxBound[splitDim] = thisMid;
+			levelCutRecursive(2 * idx + 1, depth + 1, minBound, maxBound, scalar);
+
+			// right child
+			minBound[splitDim] = thisMid;
+			maxBound[splitDim] = thisMax;
+			levelCutRecursive(2 * idx + 2, depth + 1, minBound, maxBound, scalar);
+
 		}
 	}
+}
 
-	float thisMid = (box.min[splitDim] + box.max[splitDim]) / 2.0f;
-	float thisMax = box.max[splitDim];
+byte VolumeKdtree::encodeNode(int64_t idx, int depth, byte compressedParent, bool useMap) {
 
-	// left child
-	box.max[splitDim] = thisMid;
-	if (extent[splitDim] > 1)
-		box.volMax[splitDim] = box.max[splitDim] - 1;
-	levelCutRecursive(2 * idx + 1, depth + 1, scalar, box, cutDepth, sumData, countData);
+	// For easy reference
+	double parentEstimate = (double)compressedParent;
+	double nodeTruth = (double)temp[idx];
+	//double nodeTruth = ((double)tempMax[idx] - (double)tempMin[idx]) / 2.0;
 
-	// right child
-	box.min[splitDim] = thisMid;
-	box.max[splitDim] = thisMax;
-	if (extent[splitDim] > 1) {
-		box.volMin[splitDim] = thisMid;
-		box.volMax[splitDim] = thisMax - 1;
+	// Define parent distance: distance from this node's true scalar value to its compressed parent
+	double parentDistance = abs(parentEstimate - nodeTruth);
+
+	// Define master distance: distance value to be added or subtracted to this node
+	double masterDistance = useMap ? (double)distanceMap[depth] : 
+		(distanceSums[depth] + parentDistance) / (distanceCounts[depth] + 1.0);
+
+	// Calculate error of *doing nothing* 
+	double noneEstimate = parentEstimate;
+	double noneError = parentDistance;
+
+	// Calculate error of *adding* the master distance
+	double addEstimate = std::min(255.0, parentEstimate + masterDistance);
+	double addError = abs(addEstimate - nodeTruth);
+
+	// Calculate error of *subtracting* the master difference
+	double subEstimate = std::max(0.0, parentEstimate - masterDistance);
+	double subError = abs(subEstimate - nodeTruth);
+
+	// Calculate minimum error scenario
+	double minError = std::min(subError, std::min(noneError, addError));
+
+	// If doing nothing produces minimum error, set node to 0 & return corresponding estimate
+	if (minError == noneError) {
+		tree[idx] = 0;
+		return (byte)noneEstimate;
 	}
-	levelCutRecursive(2 * idx + 2, depth + 1, scalar, box, cutDepth, sumData, countData);
+
+	// If adding produces minimum error, set node to 1 & return corresponding estimate
+	if (minError == addError) {
+		if (!useMap) {
+			distanceSums[depth] += addError;
+			distanceCounts[depth]++;
+		}
+		tree[idx] = 1;
+		return (byte)addEstimate;
+	}
+
+	// If subtracting produces minimum error, set node to 2 & return corresponding estimate
+	if (minError == subError) {
+		if (!useMap) {
+			distanceSums[depth] += subError;
+			distanceCounts[depth]++;
+		}
+		tree[idx] = 2;
+		return (byte)subEstimate;
+
+
+	}
+}
+
+void VolumeKdtree::compressTreeRecursive(int64_t idx, int depth, byte compressedParent) {
+
+	// Find scalar value & code for current node
+	byte scalar = encodeNode(idx, depth, compressedParent, true);
+
+	// Recurse on children
+	if (depth < treeDepth) {
+		compressTreeRecursive(2*idx + 1, depth + 1, scalar);
+		compressTreeRecursive(2*idx + 2, depth + 1, scalar);
+	}
 }
 
 void VolumeKdtree::save(std::string filename) {
@@ -408,18 +314,19 @@ void VolumeKdtree::save(std::string filename) {
 	// Write out the data
 	std::ofstream out(filename, std::ios::out | std::ios::binary);
 
-	out.write(reinterpret_cast<char *>(&rootBox), sizeof(BoundingBox));
+	out.write(reinterpret_cast<char *>(&rootMin), sizeof(Point3i));
+	out.write(reinterpret_cast<char *>(&rootMax), sizeof(Point3i));
 	out.write(reinterpret_cast<char *>(&treeDepth), sizeof(int));
 	out.write(reinterpret_cast<char *>(&X), sizeof(int64_t));
 	out.write(reinterpret_cast<char *>(&Y), sizeof(int64_t));
 	out.write(reinterpret_cast<char *>(&Z), sizeof(int64_t));
 	out.write(reinterpret_cast<char *>(&distanceMap[0]), treeDepth + 1);
 	out.write(reinterpret_cast<char *>(&tree.bits[0]), treeSize);
-	
+
 	out.close();
 
 	// Print info
-	int64_t dataSize = treeSize + sizeof(BoundingBox) + sizeof(int) + treeDepth + 1 + (3*sizeof(int64_t));
+	int64_t dataSize = treeSize + (2 * sizeof(Point3i)) + sizeof(int) + treeDepth + 1 + (3 * sizeof(int64_t));
 	std::cout << "\nNew file saved: " << filename << std::endl;
 	std::cout << "File size: " << (double)dataSize / 1e9 << " GB" << std::endl;
 }
@@ -442,13 +349,14 @@ void VolumeKdtree::open(std::string filename) {
 	int64_t fileSize = is.tellg();
 	is.seekg(0, is.beg);
 
-	is.read(reinterpret_cast<char *>(&rootBox), sizeof(BoundingBox));
+	is.read(reinterpret_cast<char *>(&rootMin), sizeof(Point3i));
+	is.read(reinterpret_cast<char *>(&rootMax), sizeof(Point3i));
 	is.read(reinterpret_cast<char *>(&treeDepth), sizeof(int));
 	is.read(reinterpret_cast<char *>(&X), sizeof(int64_t));
 	is.read(reinterpret_cast<char *>(&Y), sizeof(int64_t));
 	is.read(reinterpret_cast<char *>(&Z), sizeof(int64_t));
 
-	int64_t treeSize = fileSize - (sizeof(BoundingBox) + sizeof(int) + treeDepth + 1 + (3 * sizeof(int64_t)));
+	int64_t treeSize = fileSize - ((2*sizeof(Point3i)) + sizeof(int) + treeDepth + 1 + (3 * sizeof(int64_t)));
 	std::cout << treeSize << std::endl;
 
 	// Allocate memory for distanceMap & tree
@@ -461,4 +369,127 @@ void VolumeKdtree::open(std::string filename) {
 	// Close the file
 	is.close();
 
+}
+
+void VolumeKdtree::addLevels(int numLevels) {
+
+	// increase tree depth
+	int oldDepth = treeDepth;
+	treeDepth += numLevels;
+	std::cout << "NEW DEPTH: " << treeDepth << std::endl;
+
+	// resize vectors
+	distanceMap.resize(treeDepth + 1, 0); // treeDepth + root
+	distanceSums.resize(treeDepth + 1, 0.0);
+	distanceCounts.resize(treeDepth + 1, 0.0);
+	int64_t numNodes = (int64_t)(pow(2.0, (double)treeDepth + 1.0) - 1.0);
+	temp.resize(numNodes);
+	tree.resize(numNodes);
+
+	// start building from leaves of trees
+	buildFromLeaves(0, 0, rootMin, rootMax, 0, oldDepth);
+
+	// Compute Distance Map
+	//for (int depth = 0; depth < treeDepth + 1; depth++) {
+	//	distanceMap[depth] = (byte)(distanceSums[depth] / distanceCounts[depth]);
+	//}
+	for (int i = 0; i < numLevels; i++) {
+		distanceMap[oldDepth + i + 1] = (byte)pow(2, 5 - i);
+	}
+
+
+	// Compress the temporary tree from leaves
+	compressFromLeaves(0, 0, 0, oldDepth);
+}
+
+void VolumeKdtree::buildFromLeaves(int64_t idx, int depth, 
+	Point3i minBound, Point3i maxBound, byte compressedParent, int leafDepth) {
+
+	double parentEstimate = (double)compressedParent;
+	int code = (int)tree[idx];
+
+	// Compute scalar value for this node
+	byte scalar;
+	if (code == 0)
+		scalar = compressedParent;
+	else if (code == 1)
+		scalar = (byte)std::min(255.0, parentEstimate + (double)distanceMap[depth]);
+	else if (code == 2)
+		scalar = (byte)std::max(0.0, parentEstimate - (double)distanceMap[depth]);
+
+	// Recurse on children if not at maximum tree depth
+	Point3i extent = maxBound - minBound;
+	int64_t numCells = extent.prod();
+	if (depth < treeDepth) {
+
+		// Do NOT split bounding box if only 1 cell is enclosed
+		if (numCells == 1) {
+			if (depth == leafDepth) {
+				buildRecursive(2 * idx + 1, depth + 1, minBound, maxBound, scalar); // left
+				buildRecursive(2 * idx + 2, depth + 1, minBound, maxBound, scalar); // right
+			}
+			else {
+				buildFromLeaves(2 * idx + 1, depth + 1, minBound, maxBound, scalar, leafDepth);
+				buildFromLeaves(2 * idx + 2, depth + 1, minBound, maxBound, scalar, leafDepth);
+			}
+		}
+
+		else {
+			int splitDim = depth % MAX_DIM;
+
+			// Choose split dimension to acheive full resolution
+			int i = 0;
+			while (numCells > 1 && extent[splitDim] == 1) {
+				splitDim = (depth + ++i) % MAX_DIM;
+			}
+
+			// Split Bounding box 
+			int64_t thisMid = (minBound[splitDim] + maxBound[splitDim]) / 2;
+			int64_t thisMax = maxBound[splitDim];
+
+			// left child
+			maxBound[splitDim] = thisMid;
+			if (depth == leafDepth)
+				buildRecursive(2 * idx + 1, depth + 1, minBound, maxBound, scalar);
+			else
+				buildFromLeaves(2 * idx + 1, depth + 1, minBound, maxBound, scalar, leafDepth);
+
+			// right child
+			minBound[splitDim] = thisMid;
+			maxBound[splitDim] = thisMax;
+			if (depth == leafDepth)
+				buildRecursive(2 * idx + 2, depth + 1, minBound, maxBound, scalar);
+			else
+				buildFromLeaves(2 * idx + 2, depth + 1, minBound, maxBound, scalar, leafDepth);
+
+		}
+	}
+}
+
+void VolumeKdtree::compressFromLeaves(int64_t idx, int depth, byte compressedParent, int leafDepth) {
+	
+	double parentEstimate = (double)compressedParent;
+	int code = (int)tree[idx];
+
+	// Compute scalar value for this node
+	byte scalar;
+	if (code == 0)
+		scalar = compressedParent;
+	else if (code == 1)
+		scalar = (byte)std::min(255.0, parentEstimate + (double)distanceMap[depth]);
+	else if (code == 2)
+		scalar = (byte)std::max(0.0, parentEstimate - (double)distanceMap[depth]);
+
+	// Recurse on children if not at maximum tree depth
+	if (depth < treeDepth) {
+
+			if (depth == leafDepth) {
+				compressTreeRecursive(2 * idx + 1, depth + 1, scalar);
+				compressTreeRecursive(2 * idx + 2, depth + 1, scalar);
+			}
+			else {
+				compressFromLeaves(2 * idx + 1, depth + 1, scalar, leafDepth);
+				compressFromLeaves(2 * idx + 2, depth + 1, scalar, leafDepth);
+			}
+	}
 }
