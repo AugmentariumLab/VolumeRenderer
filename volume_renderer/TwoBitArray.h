@@ -51,6 +51,9 @@ public:
 	void resize(int64_t size) {
 		bits.resize((size + 3) / 4, 0);
 	}
+	void resize(int64_t size, byte byteFill) {
+		bits.resize((size + 3) / 4, byteFill);
+	}
 
 	// Return number of 2-bit elemnts
 	int64_t size() {
@@ -65,6 +68,14 @@ public:
 	TwoBitArray& operator=(std::vector<byte> &v) {
 		bits = v;
 		return *this;
+	}
+
+	void shrink_to_fit() {
+		bits.shrink_to_fit();
+	}
+
+	void swap(TwoBitArray swapArr) {
+		bits.swap(swapArr.bits);
 	}
 
 //private:

@@ -130,18 +130,16 @@
   <ItemGroup>
     <ClInclude Include="DebugTimer.h" />
     <ClInclude Include="point.h" />
-    <ClInclude Include="VolumeKdtree.h" />
     <ClInclude Include="ShaderProgram.h" />
     <ClInclude Include="TwoBitArray.h" />
     <ClInclude Include="UnitBrick.h" />
-    <ClInclude Include="VolumeKdTreeSimple.h" />
+    <ClInclude Include="VolumeKdTree.h" />
     <ClInclude Include="VolumeReader.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="DebugTimer.cpp" />
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="VolumeKdtree.cpp" />
-    <ClCompile Include="VolumeKdTreeSimple.cpp" />
+    <ClCompile Include="VolumeKdTree.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="raycaster.frag" />

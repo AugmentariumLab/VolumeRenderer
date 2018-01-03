@@ -7,6 +7,7 @@
 #include "ShaderProgram.h"
 #include "UnitBrick.h"
 #include "DebugTimer.h"
+//#include "HashedKdTree.h"
 #include "VolumeKdTree.h"
 
 // GLEW
@@ -141,11 +142,17 @@ int main() {
 	// test //
 	//VolumeKdtree * myTree = new VolumeKdtree();
 	VolumeKdtree * myTree = new VolumeKdtree(volume.data, volume.dataDims[0], volume.dataDims[1], volume.dataDims[2]);
+	//HashedKdtree * myTree = new HashedKdtree(volume.data, volume.dataDims[0], volume.dataDims[1], volume.dataDims[2]);
 	myTree->build();
-	myTree->save("tree_brick.bin");
+	//myTree->save("tree_brick_hashed_minuslevel.bin");
+	myTree->save("tree_brick_preorder.bin");
+	//myTree->save("tree256_hashed.bin");
+	//myTree->save("tree_brick_hashed.bin");
+	//myTree->open("tree_brick_hashed.bin");
 	//myTree->open("tree_brick.bin");
 	//myTree->save("tree256.bin");
 	//myTree->open("tree256.bin");
+	//myTree->open("tree_brick_preorder.bin");
 	std::vector<unsigned char> treeData;
 	myTree->levelCut(myTree->treeDepth, treeData);
 	std::cout << "MAX ERROR: " << myTree->measureMaxError() << std::endl;

@@ -1,37 +1,43 @@
-#ifndef VOLUME_KDTREE_H
-#define VOLUME_KDTREE_H
+#ifndef HASHED_KDTREE_H
+#define HASHED_KDTREE_H
 
-#include "TwoBitArray.h"
 #include <vector>
 #include <string>
 #include <math.h>
 #include <algorithm> 
 #include <fstream>
-#include <stack>
 #include "point.h"
+#include "TwoBitArray.h"
+#include <random>
+#include <unordered_map>
+
 
 
 typedef unsigned char byte;
 typedef TPoint<int64_t, 3> Point3i;
 
 /**
-*	Class VolumeKdtree
-*	Constructs a 3D Kd-tree from input volume dataset.
-*	Tree is stored in an implicit 2-bit array representing 
-*   progressively compressed scalar values.
+*	Class HashedKdtree
+*	Constructs an unbalanced 3D kd-tree from an input volume dataset.
+*	Tree is stored in a hash table where the key is a morton code
+*	and the values represent progressively compressed scalar values.
 *
 */
-class VolumeKdtree {
+class HashedKdtree {
 public:
 
-	/************************** Public Members ****************************/
+	/***** Public Members *****/
 
 	/* Root Bounding Box */
 	Point3i rootMin;
 	Point3i rootMax;
 
 	/* 2-bit nodes represent change in scalar value from parent to child */
-	TwoBitArray tree;
+	TwoBitArray treeData; //0=nochange; 1=poschange; 2=negchange; 3=collision
+	TwoBitArray treeStructure; //0=no children; 1=left child only; 2=right child only; 3=both children
+	std::unordered_map<int64_t, int32_t> collisionNodes; // morton code -> idx to collision vectors
+	TwoBitArray treeDataCollisions; // tree data overflow vector for morton code collisions
+	TwoBitArray treeStructureCollisions; // tree structure overflow vector for morton code collisions
 
 	/* Map from tree depth to distance in scalar values from parent to child */
 	std::vector<byte> distanceMap;
@@ -39,8 +45,9 @@ public:
 	/* Depth of tree (does not include root level) */
 	int treeDepth;
 
-	/* Number of non-null nodes in tree */
-	int64_t numActiveNodes;
+	int64_t numCollisions;
+	
+	int64_t hashMask;
 
 	/* Dimensions of original volume data */
 	int64_t X, Y, Z;
@@ -50,34 +57,36 @@ public:
 	std::vector<byte> * output2;
 	int queryDepth;
 
-	
+	/* Leaf accuracy tolerance */
+	int tolerance;
 
-	/*********************** Public Functions ***************************/
+
+	/***** Public Functions *****/
 
 	/* Default Constructor */
-	VolumeKdtree() { 
-		rootMin = 0; 
+	HashedKdtree() {
+		rootMin = 0;
 		rootMax = 0;
 	}
 
-	/** Constructor 
-	
-	@param inData - pointer to original volume dataset as 1-D array
-	@param x - number of cells along x-axis of dataset
-	@param y - number of cells along y-axis of dataset
-	@param z - number of cells along z-axis of dataset
-	*/
-	VolumeKdtree(std::vector<byte> &inData, int64_t x, int64_t y, int64_t z) {
+	HashedKdtree(std::vector<byte> &inData, int64_t x, int64_t y, int64_t z) {
 		data = &inData;
 		X = x;
 		Y = y;
 		Z = z;
 		rootMin = 0;
 		rootMax = { X,Y,Z };
+		tolerance = 4;
+		addLevelDistance = 64;
+		maxAddLevels = 4;
+		std::random_device random_dev;
+		std::mt19937 generator(random_dev());
+		gen = generator;
+		lastCollisionIdx = 0;
 	}
 
 	/* Deconstructor */
-	~VolumeKdtree() {
+	~HashedKdtree() {
 		std::vector<double>().swap(distanceSums);
 		std::vector<double>().swap(distanceCounts);
 		std::vector<byte>().swap(distanceMap);
@@ -86,22 +95,17 @@ public:
 	}
 
 	/**
-	Builds Kd-tree from input volume dataset.
+	Builds octree from input volume dataset.
+
+	@param inData - pointer to original volume dataset in 1-D array
+	@param X - number of cells along x-axis of dataset
+	@param Y - number of cells along y-axis of dataset
+	@param Z - number of cells along z-axis of dataset
 	*/
 	void build();
 
 	/**
-	Returns data of nodes at specific level of the tree.
-	OLD FUNCTION, traverses breath-first array.
-
-	@param cutDepth - desired level of tree.
-	@param outData - pointer to output buffer.
-	*/
-	//void levelCut(int cutDepth, std::vector<byte> &outData);
-
-	/**
-	Returns data of nodes at specific level of the tree.
-	This function traverses the depth-first tree array.
+	Return nodes at specific level of the tree.
 
 	@param cutDepth - desired level of tree.
 	@param outData - pointer to output buffer.
@@ -132,7 +136,7 @@ public:
 	void save(std::string filename);
 
 	/**
-	Opens serialized class from binary file 
+	Opens serialized class from binary file
 
 	@param filename Path of input binary file.
 	*/
@@ -141,10 +145,16 @@ public:
 
 private:
 
-	/************************* Private Members ********************************/
+	/***** Private Members *****/
 
-	/* Temporary tree for construction (before compression) */
-	std::vector<byte> temp;
+	int origTreeDepth;
+	int64_t numNodes;
+
+	/* Temporary arrays for contruction (before compression) */
+	std::vector<byte> temp; // true node scalar value
+	std::vector<byte> tempCollisions; // true node scalar value overflow for collisions
+	std::vector<int64_t> visited; // temporary array of morton codes (hashed key -> morton code)
+	
 
 	/* Pointer to original volume data */
 	std::vector<byte> * data;
@@ -156,10 +166,15 @@ private:
 	std::vector<double> distanceSums;
 	std::vector<double> distanceCounts;
 
+	/* */
+	byte addLevelDistance;
+	int maxAddLevels;
+	std::vector<int> childVec = { 1,2 };
+	std::mt19937 gen;
+	int64_t lastCollisionIdx;
 
 
-
-	/*********************** Private Functions *******************************/
+	/***** Private Functions *****/
 
 	/**
 	Recursive tree building function.
@@ -171,10 +186,9 @@ private:
 	@param maxBound 3D point defining maximum coordinate of node's bounding box.
 	@param decodedParent scalar value of node's parent as estimated by decoder.
 	*/
-	void buildRecursive(int64_t idx, int depth, Point3i minBound, Point3i maxBound, byte decodedParent);
+	void buildRecursive(int64_t mcode, int depth, Point3i minBound, Point3i maxBound, byte decodedParent);
 
-	//void levelCutRecursiveUncompressed(int64_t idx, int depth, Point3i minBound, Point3i maxBound);
-	//void levelCutRecursive(int64_t idx, int depth, Point3i minBound, Point3i maxBound, byte parentEstimate);
+	void levelCutRecursive(int64_t mcode, int depth, Point3i minBound, Point3i maxBound, byte parentEstimate);
 
 	/**
 	Assigns 2-bit code to tree node & returns decoded scalar value for that node.
@@ -186,7 +200,7 @@ private:
 
 	@return Node's scalar value as estimated by decoder.
 	*/
-	byte encodeNode(int64_t idx, int depth, byte decodedParent, bool useMap);
+	byte encodeNode(int64_t mcode, int depth, byte decodedParent, byte trueNode, bool useMap, int collisionIdx=-1);
 
 	/**
 	Return cell index into 1-D buffer of 3-D volume.
@@ -199,6 +213,9 @@ private:
 	*/
 	inline int64_t getCell(int64_t x, int64_t y, int64_t z);
 
+	inline int64_t hash(int64_t code);
+
+
 	/**
 	Recursive compression function.
 	Assigns a delta scalar code value to a node.
@@ -206,25 +223,7 @@ private:
 	@param idx Node Index.
 	@param depth Depth of node in the tree.
 	*/
-	void compressTreeRecursive(int64_t idx, int depth, byte compressedParent);
-
-	//void addLevels(int numLevels);
-
-	//void buildFromLeaves(int64_t idx, int depth, Point3i minBound, Point3i maxBound, byte compressedParent, int leafDepth);
-
-	//void compressFromLeaves(int64_t idx, int depth, byte compressedParent, int leafDepth);
-
-	/**
-	Recursively prunes subtrees by setting node code to 3 
-
-	@param rootIdx Root index of subtree to prune (index into breath-first array).
-	*/
-	void pruneTree(int64_t rootIdx);
-
-	/**
-	Converts breath-first full tree array into depth-first unbalanced array representation.
-	*/
-	void convertToPreorder();
+	void compressTreeRecursive(int64_t mcode, int depth, byte compressedParent, int trueNodeOverride=-1);
 };
 
 #endif VOLUME_OCTREE_H

@@ -30,13 +30,10 @@
     <ClInclude Include="TwoBitArray.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="VolumeKdtree.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="point.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="VolumeKdTreeSimple.h">
+    <ClInclude Include="VolumeKdTree.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -47,10 +44,7 @@
     <ClCompile Include="DebugTimer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="VolumeKdtree.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="VolumeKdTreeSimple.cpp">
+    <ClCompile Include="VolumeKdTree.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
