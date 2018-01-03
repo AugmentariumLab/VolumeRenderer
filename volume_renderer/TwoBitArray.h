@@ -78,6 +78,10 @@ public:
 		bits.swap(swapArr.bits);
 	}
 
+	void clear() {
+		bits.clear();
+	}
+
 //private:
 	std::vector<byte> bits;
 

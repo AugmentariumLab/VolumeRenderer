@@ -45,6 +45,12 @@ public:
 	/* Dimensions of original volume data */
 	int64_t X, Y, Z;
 
+	/* Knobs to adjust amount of extra levels to add to 
+	tree for increased accuracy */
+	int maxAddLevels;
+	//int tolerance;
+	std::vector<byte> tolerance;
+
 	/* Buffers for queries */
 	std::vector<byte> * output;
 	std::vector<byte> * output2;
@@ -58,6 +64,9 @@ public:
 	VolumeKdtree() { 
 		rootMin = 0; 
 		rootMax = 0;
+		//tolerance = 4;
+		maxAddLevels = 2;
+
 	}
 
 	/** Constructor 
@@ -74,6 +83,8 @@ public:
 		Z = z;
 		rootMin = 0;
 		rootMax = { X,Y,Z };
+		//tolerance = 4;
+		maxAddLevels = 2;
 	}
 
 	/* Deconstructor */
@@ -89,15 +100,6 @@ public:
 	Builds Kd-tree from input volume dataset.
 	*/
 	void build();
-
-	/**
-	Returns data of nodes at specific level of the tree.
-	OLD FUNCTION, traverses breath-first array.
-
-	@param cutDepth - desired level of tree.
-	@param outData - pointer to output buffer.
-	*/
-	//void levelCut(int cutDepth, std::vector<byte> &outData);
 
 	/**
 	Returns data of nodes at specific level of the tree.
@@ -138,6 +140,22 @@ public:
 	*/
 	void open(std::string filename);
 
+	/**
+	Sets the error tolerance for nodes.
+	Default is 4.
+
+	@param Error tolerance.
+	*/
+	//void setErrorTolerance(int errorTolerance);
+
+	/**
+	Sets the amount maximum additional levels to add for increased accuracy.
+	Default is 2.
+
+	@param Maximum amount of additional tree levels.
+	*/
+	void setMaxAdditionalLevels(int maxAdditionalLevels);
+
 
 private:
 
@@ -155,6 +173,10 @@ private:
 	/* Temporary vectors for distanceMap construction */
 	std::vector<double> distanceSums;
 	std::vector<double> distanceCounts;
+
+	/* Temporary variables for adding levels to tree */
+	int origTreeDepth;
+	int64_t numOrigNodes;
 
 
 
@@ -208,18 +230,14 @@ private:
 	*/
 	void compressTreeRecursive(int64_t idx, int depth, byte compressedParent);
 
-	//void addLevels(int numLevels);
-
-	//void buildFromLeaves(int64_t idx, int depth, Point3i minBound, Point3i maxBound, byte compressedParent, int leafDepth);
-
-	//void compressFromLeaves(int64_t idx, int depth, byte compressedParent, int leafDepth);
-
 	/**
 	Recursively prunes subtrees by setting node code to 3 
 
 	@param rootIdx Root index of subtree to prune (index into breath-first array).
 	*/
 	void pruneTree(int64_t rootIdx);
+
+	bool pruneTreeRecursive(int64_t rootIdx);
 
 	/**
 	Converts breath-first full tree array into depth-first unbalanced array representation.

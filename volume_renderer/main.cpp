@@ -143,9 +143,11 @@ int main() {
 	//VolumeKdtree * myTree = new VolumeKdtree();
 	VolumeKdtree * myTree = new VolumeKdtree(volume.data, volume.dataDims[0], volume.dataDims[1], volume.dataDims[2]);
 	//HashedKdtree * myTree = new HashedKdtree(volume.data, volume.dataDims[0], volume.dataDims[1], volume.dataDims[2]);
+	//myTree->setMaxAdditionalLevels(1);
 	myTree->build();
 	//myTree->save("tree_brick_hashed_minuslevel.bin");
-	myTree->save("tree_brick_preorder.bin");
+	myTree->save("tree_brick_preorder_2extralevels.bin");
+	//myTree->save("tree_256_preorder_3extralevels.bin");
 	//myTree->save("tree256_hashed.bin");
 	//myTree->save("tree_brick_hashed.bin");
 	//myTree->open("tree_brick_hashed.bin");
