@@ -17,7 +17,7 @@ void VolumeKdtree::build() {
 	distanceCounts.resize(treeDepth + 1, 0.0); // treeDepth + root
 	int64_t numNodes = (int64_t)pow(2, treeDepth + 1) - 1;
 	temp.resize(numNodes);
-	tree.resize(numNodes, 255);
+	tree.resize(numNodes);
 
 	//std::cout << (int)tree[0] << std::endl;
 
