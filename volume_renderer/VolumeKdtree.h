@@ -9,10 +9,37 @@
 #include <fstream>
 #include <stack>
 #include "point.h"
+#include <numeric>
+#include <random>
+#include <ctime>
+//#include <omp.h>
+#include <ppl.h>
+#include "DebugTimer.h"
+
+using namespace concurrency;
 
 
 typedef unsigned char byte;
 typedef TPoint<int64_t, 3> Point3i;
+//typedef byte MinMax[2];
+
+
+
+struct MinMax {
+	byte min;
+	byte max;
+
+	MinMax() {
+		min = 0;
+		max = 0;
+	}
+
+	MinMax(byte n, byte x) {
+		min = n;
+		max = x;
+	}
+
+};
 
 /**
 *	Class VolumeKdtree
@@ -37,7 +64,8 @@ public:
 	std::vector<byte> distanceMap;
 
 	/* Depth of tree (does not include root level) */
-	int treeDepth;
+	int maxTreeDepth;
+	int origTreeDepth;
 
 	/* Number of non-null nodes in tree */
 	int64_t numActiveNodes;
@@ -47,16 +75,13 @@ public:
 
 	/* Knobs to adjust amount of extra levels to add to 
 	tree for increased accuracy */
-	int maxAddLevels;
-	//int tolerance;
-	std::vector<byte> tolerance;
+	int tolerance;
+	int maxEpochs;
 
 	/* Buffers for queries */
 	std::vector<byte> * output;
 	std::vector<byte> * output2;
 	int queryDepth;
-
-	
 
 	/*********************** Public Functions ***************************/
 
@@ -64,9 +89,8 @@ public:
 	VolumeKdtree() { 
 		rootMin = 0; 
 		rootMax = 0;
-		//tolerance = 4;
-		maxAddLevels = 2;
-
+		tolerance = 6;
+		maxEpochs = 5;
 	}
 
 	/** Constructor 
@@ -83,8 +107,8 @@ public:
 		Z = z;
 		rootMin = 0;
 		rootMax = { X,Y,Z };
-		//tolerance = 4;
-		maxAddLevels = 2;
+		tolerance = 6;
+		maxEpochs = 5;
 	}
 
 	/* Deconstructor */
@@ -99,7 +123,7 @@ public:
 	/**
 	Builds Kd-tree from input volume dataset.
 	*/
-	void build();
+	void build(bool useThreads = true);
 
 	/**
 	Returns data of nodes at specific level of the tree.
@@ -142,19 +166,20 @@ public:
 
 	/**
 	Sets the error tolerance for nodes.
-	Default is 4.
+	Default is 6.
 
 	@param Error tolerance.
 	*/
-	//void setErrorTolerance(int errorTolerance);
+	void setErrorTolerance(int errorTolerance);
 
 	/**
-	Sets the amount maximum additional levels to add for increased accuracy.
-	Default is 2.
+	Sets the maximum amount of epochs when finding distance map values
+	using gradient descent.
+	Default is 8.
 
-	@param Maximum amount of additional tree levels.
+	@param Number of epochs.
 	*/
-	void setMaxAdditionalLevels(int maxAdditionalLevels);
+	void setMaxEpochs(int epochs);
 
 
 private:
@@ -163,6 +188,9 @@ private:
 
 	/* Temporary tree for construction (before compression) */
 	std::vector<byte> temp;
+
+	/* Temporary vector of reconstructed nodes */
+	std::vector<byte> recon;
 
 	/* Pointer to original volume data */
 	std::vector<byte> * data;
@@ -175,28 +203,29 @@ private:
 	std::vector<double> distanceCounts;
 
 	/* Temporary variables for adding levels to tree */
-	int origTreeDepth;
 	int64_t numOrigNodes;
+	int64_t numMaxNodes;
+	int64_t firstOrigLeaf;
 
-
+	bool parallelism;
 
 
 	/*********************** Private Functions *******************************/
 
 	/**
 	Recursive tree building function.
-	Populates a node and recurses on node's children.
+	Populates a true byte node and recurses on node's children.
 
 	@param idx Node index.
 	@param depth Depth of node in the tree.
 	@param minBound 3D point defining minimum coordinate of node's bounding box.
 	@param maxBound 3D point defining maximum coordinate of node's bounding box.
-	@param decodedParent scalar value of node's parent as estimated by decoder.
-	*/
-	void buildRecursive(int64_t idx, int depth, Point3i minBound, Point3i maxBound, byte decodedParent);
 
-	//void levelCutRecursiveUncompressed(int64_t idx, int depth, Point3i minBound, Point3i maxBound);
-	//void levelCutRecursive(int64_t idx, int depth, Point3i minBound, Point3i maxBound, byte parentEstimate);
+	@return Node's bounding box.
+	*/
+	MinMax buildRecursive(int64_t idx, int depth, Point3i minBound, Point3i maxBound);
+
+	void compressGradientDescent();
 
 	/**
 	Assigns 2-bit code to tree node & returns decoded scalar value for that node.
@@ -208,7 +237,9 @@ private:
 
 	@return Node's scalar value as estimated by decoder.
 	*/
-	byte encodeNode(int64_t idx, int depth, byte decodedParent, bool useMap);
+	//byte encodeNode(int64_t idx, int depth, byte decodedParent, bool useMap, bool useRecon = false);
+	//byte encodeNode(int64_t idx, int depth, byte decodedParent, bool useMap, 
+	//	double truthOverride = -1, double * sumsOverride = nullptr, double * countsOverride = nullptr, byte * mapOverride = nullptr);
 
 	/**
 	Return cell index into 1-D buffer of 3-D volume.
@@ -231,18 +262,20 @@ private:
 	void compressTreeRecursive(int64_t idx, int depth, byte compressedParent);
 
 	/**
-	Recursively prunes subtrees by setting node code to 3 
+	Recursively prunes subtrees by setting node code to 3
 
 	@param rootIdx Root index of subtree to prune (index into breath-first array).
 	*/
-	void pruneTree(int64_t rootIdx);
-
 	bool pruneTreeRecursive(int64_t rootIdx);
 
 	/**
 	Converts breath-first full tree array into depth-first unbalanced array representation.
 	*/
 	void convertToPreorder();
+
+	byte encodeNodeEstimate(int64_t idx, byte compressedParent, double * estimateSum, double * estimateCount);
+	byte encodeNode(int64_t idx, byte compressedParent, byte distanceVal, bool fillTree = true,
+		double nodeTruth = -1.0, double * returnError = nullptr);
 };
 
 #endif VOLUME_OCTREE_H

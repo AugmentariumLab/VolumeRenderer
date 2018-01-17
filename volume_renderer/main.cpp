@@ -134,20 +134,27 @@ int main() {
 		findBrickBinaryFile, &volumeBrickMap);
 
 
-	bool texLoadSuccess = volume.LoadBrickToTexture(700, 273, false);
-	//bool texLoadSuccess = volume.LoadBricksToTexture(256, 8, 8, 4, 273, false);
+	//bool texLoadSuccess = volume.LoadBrickToTexture(700, 273, false);
+	bool texLoadSuccess = volume.LoadBricksToTexture(256, 8, 8, 4, 273, false);
 	//bool texLoadSuccess = volume.LoadBricksToTexture(384, 8, 8, 6, 273, false);
-	std::cout << volume.dataDims[0] << " " << volume.dataDims[1] << " " << volume.dataDims[2] << std::endl;
-	std::cout << volume.data.size() << std::endl;
+	//std::cout << volume.dataDims[0] << " " << volume.dataDims[1] << " " << volume.dataDims[2] << std::endl;
+	//std::cout << volume.data.size() << std::endl;
 	// test //
 	//VolumeKdtree * myTree = new VolumeKdtree();
 	VolumeKdtree * myTree = new VolumeKdtree(volume.data, volume.dataDims[0], volume.dataDims[1], volume.dataDims[2]);
+	myTree->setMaxEpochs(1);
+	myTree->setErrorTolerance(4);
 	//HashedKdtree * myTree = new HashedKdtree(volume.data, volume.dataDims[0], volume.dataDims[1], volume.dataDims[2]);
-	//myTree->setMaxAdditionalLevels(1);
-	myTree->build();
-	//myTree->save("tree_brick_hashed_minuslevel.bin");
-	myTree->save("tree_brick_preorder_2extralevels.bin");
-	//myTree->save("tree_256_preorder_3extralevels.bin");
+	DebugTimer::Begin(1, "TOTAL_CONSTRUCTION");
+	myTree->build(true);
+	DebugTimer::End("TOTAL_CONSTRUCTION");
+	//myTree->save("tree_384_6tolerance.bin");
+	//myTree->open("tree_384_6tolerance.bin");
+	//myTree->save("tree_256_6tolerance.bin");
+	//myTree->open("tree_256_6tolerance.bin");
+	//myTree->open("tree_brick_5extralevels.bin");
+	//myTree->save("tree_brick_preorder_2extralevels.bin");
+	//myTree->save("tree_384_preorder_0extralevels.bin");
 	//myTree->save("tree256_hashed.bin");
 	//myTree->save("tree_brick_hashed.bin");
 	//myTree->open("tree_brick_hashed.bin");
@@ -156,12 +163,13 @@ int main() {
 	//myTree->open("tree256.bin");
 	//myTree->open("tree_brick_preorder.bin");
 	std::vector<unsigned char> treeData;
-	myTree->levelCut(myTree->treeDepth, treeData);
-	std::cout << "MAX ERROR: " << myTree->measureMaxError() << std::endl;
-	std::cout << "MEAN ERROR: " << myTree->measureMeanError() << std::endl;
+	myTree->levelCut(myTree->maxTreeDepth, treeData);
+	//std::cout << "MAX ERROR: " << myTree->measureMaxError() << std::endl;
+	//std::cout << "MEAN ERROR: " << myTree->measureMeanError() << std::endl;
 	//std::vector<unsigned char> errorData;
 	//myTree->queryError(errorData);
 	//std::cout << treeData.size() << " " << volume.data.size() << std::endl;
+	//glTexImage3D(GL_TEXTURE_3D, 0, GL_RED, (GLsizei)volume.dataDims[0], (GLsizei)volume.dataDims[1], (GLsizei)volume.dataDims[2], 0, GL_RED, GL_UNSIGNED_BYTE, &volume.data[0]);
 	glTexImage3D(GL_TEXTURE_3D, 0, GL_RED, (GLsizei)volume.dataDims[0], (GLsizei)volume.dataDims[1], (GLsizei)volume.dataDims[2], 0, GL_RED, GL_UNSIGNED_BYTE, &treeData[0]);
 	//glTexImage3D(GL_TEXTURE_3D, 0, GL_RED, (GLsizei)volume.dataDims[0], (GLsizei)volume.dataDims[1], (GLsizei)volume.dataDims[2], 0, GL_RED, GL_UNSIGNED_BYTE, &errorData[0]);
 	//std::vector<unsigned char> diff;
@@ -170,7 +178,7 @@ int main() {
 	//int64_t sumDiff = std::accumulate(diff.begin(), diff.end(), 0);
 	//std::cout << " ERROR = " << sumDiff << std::endl;
 
-	delete myTree;
+	//delete myTree;
 	
 
 	//if (!texLoadSuccess) {
