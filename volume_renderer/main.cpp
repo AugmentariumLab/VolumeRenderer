@@ -8,7 +8,8 @@
 #include "UnitBrick.h"
 #include "DebugTimer.h"
 //#include "HashedKdTree.h"
-#include "VolumeKdTree.h"
+#include "VolumeKdTree_recover.h"
+//#include "MidRangeTree.h"
 
 // GLEW
 #define GLEW_STATIC
@@ -26,7 +27,10 @@
 const GLuint WIDTH = 1600, HEIGHT = 1200;
 
 // Starting positions
-glm::vec3 cameraPosStart = glm::vec3(0.0f, 0.0f, -5.0f);
+//glm::vec3 cameraPosStart = glm::vec3(0.0f, -1.5f, -1.5f);
+//glm::vec3 cameraFrontStart = glm::vec3(0.0f, 1.0f, 1.0f);
+//glm::vec3 cameraUpStart = glm::vec3(0.0f, 1.0f, 0.0f);
+glm::vec3 cameraPosStart = glm::vec3(0.0f, 0.0f, -0.75f);
 glm::vec3 cameraFrontStart = glm::vec3(0.0f, 0.0f, 1.0f);
 glm::vec3 cameraUpStart = glm::vec3(0.0f, 1.0f, 0.0f);
 GLfloat yawStart = 0.0f;
@@ -45,6 +49,7 @@ GLdouble lastX = lastXStart;
 GLdouble lastY = lastYStart;
 GLfloat fov = fovStart;
 bool keys[1024];
+GLfloat currIsoVal = 40.0f;
 
 // Deltatime - normalizes between systems
 GLfloat currentFrame = 0.0f;
@@ -65,10 +70,14 @@ void fillVolumeBrickMap();
 // Shader files
 const char* vertFile = ".\\raycaster.vert";
 const char* fragFile = ".\\raycaster.frag";
+//const char* vertFile = ".\\isosurface.vert";
+//const char* fragFile = ".\\isosurface.frag";
+//const char* fragFile = ".\\isosurface.frag";
+ShaderProgram shaderProgram;
 
 int64_t BRICK_DIM[3] = { 256, 256, 128 };
 int64_t VOLUME_GRID[3] = { 8, 8, 15 };
-
+  
 std::map<int, dim3D> volumeBrickMap;
 
 
@@ -132,26 +141,131 @@ int main() {
 	fillVolumeBrickMap();
 	VolumeReader<GLubyte> volume(BRICK_DIM, VOLUME_GRID,
 		findBrickBinaryFile, &volumeBrickMap);
+	
+	// Load datasets to GPU - No Compression
+	//bool texLoadSuccess = volume.LoadBricksToTexture(448, 8, 8, 7, 273, true, true); // max memory
+
+	// Compress
+	//bool texLoadSuccess = volume.LoadBricksToTexture(256, 8, 8, 4, 273, false);
+	//bool texLoadSuccess = volume.LoadBrickToTexture(700, 273, false, false);
+	//bool texLoadSuccess = volume.LoadBricksToTexture(384, 8, 8, 6, 273, false, false);
+	//bool texLoadSuccess = volume.LoadBricksToTexture(256, 8, 8, 4, 273, false);
+	//bool texLoadSuccess = volume.LoadBricksToTexture(448, 8, 8, 7, 270, false);
+	//bool texLoadSuccess = volume.LoadBricksToTexture(960, 8, 8, 15, 270, false);
+
+	//VolumeKdtree * myTree = new VolumeKdtree(volume.data, volume.dataDims[0], volume.dataDims[1], volume.dataDims[2]);
+
+	//MidRangeTree * myTree = new MidRangeTree();
+	//myTree->open("mid_range_tree_1brick.bin");
+	//myTree->open("mid_range_tree_256bricks.bin")
+	//myTree->open("tree_384_6tolerance.bin");
+
+	
+	//myTree->setMaxEpochs(1);
+	//myTree->setErrorTolerance(4);
+	//myTree->setErrorTolerance(6);
+
+	//DebugTimer::Begin(1, "TOTAL_CONSTRUCTION");
+	//myTree->build(true);
+	//DebugTimer::End("TOTAL_CONSTRUCTION");
+	
+	
+
+	//myTree->save("tree_256brick_2error.bin");
+	//myTree->save("mid_range_tree_256bricks.bin");
+	//myTree->save("mid_range_tree_256bricks_2error.bin");
+	//myTree->save("mid_range_tree_448bricks_0error.bin");
+
+	/*
+	std::vector<unsigned char> treeData;
+	myTree->levelCut(myTree->maxTreeDepth, treeData);
+	//delete myTree; 
+
+	
+	// Create OpenGL 3D Texture
+	GLuint textureId;
+	glGenTextures(1, &textureId);
+	glBindTexture(GL_TEXTURE_3D, textureId);
+
+	// Set the texture parameters
+	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP);
+	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
+	// Load uncompressed data vector into 3D Texture
+	glTexImage3D(GL_TEXTURE_3D, 0, GL_RED, (GLsizei)BRICK_DIM[0], (GLsizei)BRICK_DIM[1], (GLsizei)BRICK_DIM[2], 0, GL_RED, GL_UNSIGNED_BYTE, &treeData[0]);
+	//glTexImage3D(GL_TEXTURE_3D, 0, GL_RED, (GLsizei)volume.dataDims[0], (GLsizei)volume.dataDims[1], (GLsizei)volume.dataDims[2], 0, GL_RED, GL_UNSIGNED_BYTE, &treeData[0]);
+	*/
 
 
+	/*
+	std::vector<unsigned char> compressedVolume;
+	myTree->convertToByteArray(compressedVolume);   
+	std::cout << compressedVolume.size() << std::endl;
+
+	// Store the compressed tree into 1D Texture
+	GLuint textureId;
+	glGenTextures(1, &textureId);
+	glBindTexture(GL_TEXTURE_1D, textureId);
+	glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_R, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	//glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+	//glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+	//glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_R, GL_CLAMP);
+	//glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	//glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	
+	
+	glTexImage1D(GL_TEXTURE_1D, 0, GL_INTENSITY, compressedVolume.size(), 0, GL_RED, GL_UNSIGNED_BYTE, &compressedVolume[0]);
+	*/
+
+	// Store the distance maps as uniform buffer objects
+	//const int MAX_HEIGHT = 40;
+	//GLuint myArrayUBO;
+	//glGenBuffers(1, &myArrayUBO);
+	//glBindBuffer(GL_UNIFORM_BUFFER, myArrayUBO);
+	//glBufferData(GL_UNIFORM_BUFFER, sizeof(GLint) * MAX_HEIGHT, &myTree->distanceMap[0], GL_DYNAMIC_DRAW);
+
+	//GLuint myArrayUBO1;
+	//glGenBuffers(1, &myArrayUBO1);
+	//glBindBuffer(GL_UNIFORM_BUFFER, myArrayUBO1);
+	//glBufferData(GL_UNIFORM_BUFFER, sizeof(GLint) * MAX_HEIGHT, &myTree->distanceMap_range[0], GL_DYNAMIC_DRAW);
+
+	//bool texLoadSuccess = volume.LoadBricksToTexture(512, 8, 8, 8, 273, true);
 	//bool texLoadSuccess = volume.LoadBrickToTexture(700, 273, false);
-	bool texLoadSuccess = volume.LoadBricksToTexture(256, 8, 8, 4, 273, false);
-	//bool texLoadSuccess = volume.LoadBricksToTexture(384, 8, 8, 6, 273, false);
+	//bool texLoadSuccess = volume.LoadBricksToTexture(256, 8, 8, 4, 273, false);
+	bool texLoadSuccess = volume.LoadBricksToTexture(384, 8, 8, 6, 273, false);
+	//bool texLoadSuccess = volume.LoadBricksToTexture(448, 8, 8, 7, 273, false);
+	//bool texLoadSuccess = volume.LoadBricksToTexture(960, 8, 8, 15, 273, false, false);
 	//std::cout << volume.dataDims[0] << " " << volume.dataDims[1] << " " << volume.dataDims[2] << std::endl;
 	//std::cout << volume.data.size() << std::endl;
 	// test //
 	//VolumeKdtree * myTree = new VolumeKdtree();
+
+	
 	VolumeKdtree * myTree = new VolumeKdtree(volume.data, volume.dataDims[0], volume.dataDims[1], volume.dataDims[2]);
-	myTree->setMaxEpochs(1);
-	myTree->setErrorTolerance(4);
-	//HashedKdtree * myTree = new HashedKdtree(volume.data, volume.dataDims[0], volume.dataDims[1], volume.dataDims[2]);
-	DebugTimer::Begin(1, "TOTAL_CONSTRUCTION");
+	//MidRangeTree * myTree = new MidRangeTree(volume.data, volume.dataDims[0], volume.dataDims[1], volume.dataDims[2]);
+	myTree->setMaxEpochs(2);
+	myTree->setErrorTolerance(1);
+	
+	
+    DebugTimer::Begin(1, "TOTAL_CONSTRUCTION");
 	myTree->build(true);
 	DebugTimer::End("TOTAL_CONSTRUCTION");
-	//myTree->save("tree_384_6tolerance.bin");
-	//myTree->open("tree_384_6tolerance.bin");
-	//myTree->save("tree_256_6tolerance.bin");
-	//myTree->open("tree_256_6tolerance.bin");
+	
+	
+
+	//myTree->save("mid_range_tree_allbricks.bin");
+
+	//myTree->open("tree_384_2tolerance_2epoch.bin");
+	//myTree->open("tree_384_6tolerance_recovered.bin");
+	myTree->save("tree_384_1tolerance.bin");
+	//myTree->save("tree_256_12tolerance_r.bin");
 	//myTree->open("tree_brick_5extralevels.bin");
 	//myTree->save("tree_brick_preorder_2extralevels.bin");
 	//myTree->save("tree_384_preorder_0extralevels.bin");
@@ -162,15 +276,19 @@ int main() {
 	//myTree->save("tree256.bin");
 	//myTree->open("tree256.bin");
 	//myTree->open("tree_brick_preorder.bin");
+
 	std::vector<unsigned char> treeData;
 	myTree->levelCut(myTree->maxTreeDepth, treeData);
+
 	//std::cout << "MAX ERROR: " << myTree->measureMaxError() << std::endl;
 	//std::cout << "MEAN ERROR: " << myTree->measureMeanError() << std::endl;
 	//std::vector<unsigned char> errorData;
 	//myTree->queryError(errorData);
 	//std::cout << treeData.size() << " " << volume.data.size() << std::endl;
 	//glTexImage3D(GL_TEXTURE_3D, 0, GL_RED, (GLsizei)volume.dataDims[0], (GLsizei)volume.dataDims[1], (GLsizei)volume.dataDims[2], 0, GL_RED, GL_UNSIGNED_BYTE, &volume.data[0]);
+
 	glTexImage3D(GL_TEXTURE_3D, 0, GL_RED, (GLsizei)volume.dataDims[0], (GLsizei)volume.dataDims[1], (GLsizei)volume.dataDims[2], 0, GL_RED, GL_UNSIGNED_BYTE, &treeData[0]);
+	
 	//glTexImage3D(GL_TEXTURE_3D, 0, GL_RED, (GLsizei)volume.dataDims[0], (GLsizei)volume.dataDims[1], (GLsizei)volume.dataDims[2], 0, GL_RED, GL_UNSIGNED_BYTE, &errorData[0]);
 	//std::vector<unsigned char> diff;
 	//std::set_difference(volume.data.begin(), volume.data.end(), treeData.begin(), treeData.end(),
@@ -192,7 +310,7 @@ int main() {
 
 	/****** Set up Shaders ******/
 
-	ShaderProgram shaderProgram;
+	
 	shaderProgram.loadShaderFromFile(vertFile, GL_VERTEX_SHADER);
 	shaderProgram.loadShaderFromFile(fragFile, GL_FRAGMENT_SHADER);
 	shaderProgram.createProgram();
@@ -204,16 +322,31 @@ int main() {
 	shaderProgram.addUniform("camPos");
 	shaderProgram.addUniform("step_size");
 	shaderProgram.addUniform("TransformationMatrix");
+	shaderProgram.addUniform("isoValue");
+	shaderProgram.addUniform("origTreeDepth");
+	shaderProgram.addUniform("maxTreeDepth");
 
 	// Note: step size should be adjusted based on volume size, but be careful of fps
 	glUniform3f(shaderProgram.uniforms["step_size"], 1.0f / (float)BRICK_DIM[0],
 		1.0f / (float)BRICK_DIM[1], 1.0f / (float)BRICK_DIM[2]);
 	glUniform1i(shaderProgram.uniforms["volume"], 0);
-
+	
+	glUniform1f(shaderProgram.uniforms["isoValue"], currIsoVal / 255.0f);
+	//glUniform1i(shaderProgram.uniforms["origTreeDepth"], myTree->origTreeDepth);
+	//glUniform1i(shaderProgram.uniforms["maxTreeDepth"], myTree->maxTreeDepth);
 
 	glm::mat4 trans;
-	trans = glm::scale(trans, glm::vec3(2.0, 2.0, 2.0));
+	//trans = glm::rotate(trans, glm::radians(50.0f), glm::vec3(1.0, 0.0, 0.0));
+	//trans = glm::scale(trans, glm::vec3(2.0, 2.0, 2.0));
 	glUniformMatrix4fv(shaderProgram.uniforms["TransformationMatrix"], 1, GL_FALSE, glm::value_ptr(trans));
+
+	//GLuint distanceMapIdx = glGetUniformBlockIndex(shaderProgram.programId, "distanceMap");
+	//glUniformBlockBinding(shaderProgram.programId, distanceMapIdx, 0);
+	//glBindBufferBase(GL_UNIFORM_BUFFER, 0, myArrayUBO);
+
+	//GLuint distanceMapRangeIdx = glGetUniformBlockIndex(shaderProgram.programId, "distanceMapRange");
+	//glUniformBlockBinding(shaderProgram.programId, distanceMapRangeIdx, 1);
+	//glBindBufferBase(GL_UNIFORM_BUFFER, 1, myArrayUBO1);
 
 	//std::cout << "shader check" << std::endl;
 	handleGLerrors(glGetError());
@@ -255,7 +388,8 @@ int main() {
 		do_movement();
 
 		// Clear color & depth buffer
-		glClearColor(0.0f, 0.0f, 0.0f, 1.0f); //black
+		//glClearColor(0.0f, 0.0f, 0.0f, 1.0f); //black
+		glClearColor(255.0f, 255.0f, 255.0f, 1.0f); //white
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 		// dynamic matrices
@@ -329,7 +463,7 @@ void do_movement()
 {
 	// Camera controls
 	//GLfloat cameraSpeed = 0.08f;
-	GLfloat cameraSpeed = 5.0f * deltaTime;
+	GLfloat cameraSpeed = 2.5f * deltaTime;
 	if (keys[GLFW_KEY_UP])
 		cameraPos += cameraSpeed * cameraFront;
 	if (keys[GLFW_KEY_DOWN])
@@ -338,6 +472,9 @@ void do_movement()
 		cameraPos -= glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
 	if (keys[GLFW_KEY_RIGHT])
 		cameraPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
+	
+	
+		
 }
 
 // Is called whenever a key is pressed/released via GLFW
@@ -348,6 +485,17 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 
 	if (key == GLFW_KEY_ENTER && action == GLFW_PRESS)
 		reset();
+
+	if (key == GLFW_KEY_0 && action == GLFW_PRESS) {
+		currIsoVal = std::max(0.0f, currIsoVal - 5.0f);
+		glUniform1f(shaderProgram.uniforms["isoValue"], currIsoVal / 255.0f);
+		std::cout << "Isovalue: " << currIsoVal << std::endl;
+	}
+	if (key == GLFW_KEY_1 && action == GLFW_PRESS) {
+		currIsoVal = std::min(255.0f, currIsoVal + 5.0f);
+		glUniform1f(shaderProgram.uniforms["isoValue"], currIsoVal / 255.0f);
+		std::cout << "Isovalue: " << currIsoVal << std::endl;
+	}
 
 	if (key >= 0 && key < 1024)
 	{

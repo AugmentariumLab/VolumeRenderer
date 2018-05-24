@@ -1,4 +1,4 @@
-#include "VolumeKdtree.h"
+#include "VolumeKdtree_recover.h"
 
 
 inline int64_t VolumeKdtree::getCell(int64_t x, int64_t y, int64_t z) {
@@ -27,7 +27,7 @@ void VolumeKdtree::build(bool useThreads) {
 	int numYsplits = (int)(log(Y) / log(2));
 	int numZsplits = (int)(log(Z) / log(2));
 	origTreeDepth = numXsplits + numYsplits + numZsplits; // total number of splits (not counting root)
-	maxTreeDepth = origTreeDepth + maxAddLevels; 
+	maxTreeDepth = origTreeDepth + maxAddLevels;
 	distanceMap.resize(maxTreeDepth + 1, 0); // treeDepth + root
 	distanceSums.resize(maxTreeDepth + 1, 0.0); // treeDepth + root
 	distanceCounts.resize(maxTreeDepth + 1, 0.0); // treeDepth + root
@@ -65,8 +65,8 @@ void VolumeKdtree::build(bool useThreads) {
 	temp.shrink_to_fit();
 	int64_t numLeaves = temp.size();
 	DebugTimer::End("COMPRESS");
-	
-	
+
+
 
 	// Max Error
 	int maxError = 0;
@@ -79,7 +79,7 @@ void VolumeKdtree::build(bool useThreads) {
 	double sumErrorL2 = 0.0;
 	for (int64_t i = 0; i < numLeaves; i++) {
 		sumError += abs((double)temp[i] - (double)recon[i]);
-		sumErrorL2 += pow( ((double)temp[i] - (double)recon[i]), 2.0);
+		sumErrorL2 += pow(((double)temp[i] - (double)recon[i]), 2.0);
 	}
 	std::cout << "Before branch growth, Mean Error L1: " << sumError / (double)numLeaves << "  Mean Error L2: " << sumErrorL2 / (double)numLeaves << std::endl;
 
@@ -100,7 +100,7 @@ void VolumeKdtree::build(bool useThreads) {
 	/*
 	std::cout << "DISTANCE MAP: " << std::endl;
 	for (int depth = 0; depth < maxTreeDepth + 1; depth++) {
-		std::cout << (int)distanceMap[depth] << std::endl;
+	std::cout << (int)distanceMap[depth] << std::endl;
 	}
 	*/
 
@@ -127,7 +127,7 @@ void VolumeKdtree::build(bool useThreads) {
 		sumErrorL2 += pow(((double)temp[i] - (double)recon[i]), 2.0);
 	}
 	std::cout << "Mean L1 Error: " << sumError / (double)numLeaves << "  Mean Error L2: " << sumErrorL2 / (double)numLeaves << std::endl;
-	
+
 	// Deallocate temporary trees
 	//temp.clear();
 	//temp.shrink_to_fit();
@@ -190,7 +190,7 @@ MinMax VolumeKdtree::buildRecursive(int64_t idx, int depth, Point3i minBound, Po
 
 		thisMinScalar = std::min((double)leftScalarRange.min, (double)rightScalarRange.min);
 		thisMaxScalar = std::max((double)leftScalarRange.max, (double)rightScalarRange.max);
-	} 
+	}
 	else if (depth == origTreeDepth)
 		thisMaxScalar = thisMinScalar = (*data)[getCell(minBound[0], minBound[1], minBound[2])];
 
@@ -219,7 +219,7 @@ void VolumeKdtree::compressGradientDescent() {
 	std::vector<byte> reconstructedParents; // reconstructed node @ depth - 1
 	std::vector<byte> reconPreviousEpoch; // save recon from previous epoch in case of revert
 
-	// These variables are updated @ each gradient descent epoch
+										  // These variables are updated @ each gradient descent epoch
 	int epoch;
 	double distanceSum, distanceCount;
 	double currentDistance, currentError, currentDF, currentStepSize;
@@ -227,7 +227,7 @@ void VolumeKdtree::compressGradientDescent() {
 	//byte reconstructedParent, reconstructedNode, trueNode;
 
 	for (int depth = 0; depth < origTreeDepth + 1; depth++) {
-		
+
 		// Initialize processing variables
 		epoch = 0;
 		distanceSum = distanceCount = 0.0;
@@ -249,14 +249,14 @@ void VolumeKdtree::compressGradientDescent() {
 			});
 			distanceSum = sum.combine(plus<double>());
 			distanceCount = count.combine(plus<double>());
-		} 
+		}
 		else {
 			for (int64_t nodeIdx = startingNodeIdx; nodeIdx < endingNodeIdx; nodeIdx++) {
 				byte reconstructedParent = nodeIdx == 0 ? 0 : reconstructedParents[((nodeIdx - 1) / 2) - parentStartingNodeIdx];
 				encodeNodeEstimate(nodeIdx, reconstructedParent, &distanceSum, &distanceCount);
 			}
 		}
-		
+
 
 
 		// Calculate current distance value from distanceSum & distanceCount
@@ -264,7 +264,7 @@ void VolumeKdtree::compressGradientDescent() {
 			currentDistance = round(distanceSum / distanceCount);
 		else
 			currentDistance = 0.0;
-		
+
 		// End find starting distance block //////////////////////////////////////////////
 
 
@@ -287,7 +287,7 @@ void VolumeKdtree::compressGradientDescent() {
 				if (currentDistance == previousDistance)
 					break;
 			}
-			
+
 			// Evaluate error for current distance
 			//if (parallelism) {
 			if (false) {
@@ -299,7 +299,7 @@ void VolumeKdtree::compressGradientDescent() {
 					byte reconstructedNode = encodeNode(nodeIdx, reconstructedParent, (byte)currentDistance, true, -1.0, &L1Error);
 					//currentError += pow(L1Error, 2.0);
 					error.local() += pow(L1Error, 2.0);
-					recon[nodeIdx - startingNodeIdx] = reconstructedNode; 
+					recon[nodeIdx - startingNodeIdx] = reconstructedNode;
 				});
 				currentError = error.combine(plus<double>());
 			}
@@ -313,7 +313,7 @@ void VolumeKdtree::compressGradientDescent() {
 				}
 			}
 			currentError /= numNodes;
-			
+
 
 			// Break gradient descent loop if found zero-error distance map value
 			if (currentError < 1.0)
@@ -330,41 +330,38 @@ void VolumeKdtree::compressGradientDescent() {
 				continue;
 			}
 
-			if (epoch + 1 < maxEpochs) {
-				// Evaluate DF for current distance using central difference fomula
-				byte estimateDistances[2] = { (byte)std::max(0.0, currentDistance - h), (byte)std::min(255.0, currentDistance + h) };
-				double estimateErrors[2] = { 0, 0 };
-				if (parallelism) {
-					//if (false) {
-					parallel_for(int(0), 2, [this, &estimateDistances, &estimateErrors, startingNodeIdx,
-						endingNodeIdx, reconstructedParents, parentStartingNodeIdx, numNodes](int i) {
-						for (int64_t nodeIdx = startingNodeIdx; nodeIdx < endingNodeIdx; nodeIdx++) {
-							byte reconstructedParent = nodeIdx == 0 ? 0 : reconstructedParents[((nodeIdx - 1) / 2) - parentStartingNodeIdx];
-							double L1error;
-							encodeNode(nodeIdx, reconstructedParent, estimateDistances[i], false, -1.0, &L1error);
-							estimateErrors[i] += pow(L1error, 2.0);
-						}
-						estimateErrors[i] /= numNodes;
-					});
-				}
-				else {
-					for (int i = 0; i < 2; i++) {
-						for (int64_t nodeIdx = startingNodeIdx; nodeIdx < endingNodeIdx; nodeIdx++) {
-							byte reconstructedParent = nodeIdx == 0 ? 0 : reconstructedParents[((nodeIdx - 1) / 2) - parentStartingNodeIdx];
-							double L1error;
-							encodeNode(nodeIdx, reconstructedParent, estimateDistances[i], false, -1.0, &L1error);
-							estimateErrors[i] += pow(L1error, 2.0);
-						}
-						estimateErrors[i] /= numNodes;
+			// Evaluate DF for current distance using central difference fomula
+			byte estimateDistances[2] = { (byte)std::max(0.0, currentDistance - h), (byte)std::min(255.0, currentDistance + h) };
+			double estimateErrors[2] = { 0, 0 };
+			if (parallelism) {
+				//if (false) {
+				parallel_for(int(0), 2, [this, &estimateDistances, &estimateErrors, startingNodeIdx,
+					endingNodeIdx, reconstructedParents, parentStartingNodeIdx, numNodes](int i) {
+					for (int64_t nodeIdx = startingNodeIdx; nodeIdx < endingNodeIdx; nodeIdx++) {
+						byte reconstructedParent = nodeIdx == 0 ? 0 : reconstructedParents[((nodeIdx - 1) / 2) - parentStartingNodeIdx];
+						double L1error;
+						encodeNode(nodeIdx, reconstructedParent, estimateDistances[i], false, -1.0, &L1error);
+						estimateErrors[i] += pow(L1error, 2.0);
 					}
-				}
-
-				currentDF = (estimateErrors[1] - estimateErrors[0]) / (2.0 * h);
-				currentStepSize = std::max(-maxAbsStepSize, std::min(maxAbsStepSize, -gamma * currentDF));
-				//std::cout << currentDF << " " << currentError << " " << currentDistance << " " << depth << " " << epoch << std::endl; //DEBUG 
-				reconPreviousEpoch = recon;
+					estimateErrors[i] /= numNodes;
+				});
 			}
-			
+			else {
+				for (int i = 0; i < 2; i++) {
+					for (int64_t nodeIdx = startingNodeIdx; nodeIdx < endingNodeIdx; nodeIdx++) {
+						byte reconstructedParent = nodeIdx == 0 ? 0 : reconstructedParents[((nodeIdx - 1) / 2) - parentStartingNodeIdx];
+						double L1error;
+						encodeNode(nodeIdx, reconstructedParent, estimateDistances[i], false, -1.0, &L1error);
+						estimateErrors[i] += pow(L1error, 2.0);
+					}
+					estimateErrors[i] /= numNodes;
+				}
+			}
+
+			currentDF = (estimateErrors[1] - estimateErrors[0]) / (2.0 * h);
+			currentStepSize = std::max(-maxAbsStepSize, std::min(maxAbsStepSize, -gamma * currentDF));
+			//std::cout << currentDF << " " << currentError << " " << currentDistance << " " << depth << " " << epoch << std::endl; //DEBUG 
+			reconPreviousEpoch = recon;
 			epoch++;
 		}
 
@@ -416,7 +413,7 @@ void VolumeKdtree::queryError(std::vector<byte> &outData) {
 
 
 byte VolumeKdtree::encodeNodeEstimate(int64_t idx, byte compressedParent, double * estimateSum, double * estimateCount) {
-	
+
 	double nodeTruth = (double)temp[idx];
 	double parentEstimate = (double)compressedParent;
 	double parentDistance = abs(parentEstimate - nodeTruth);
@@ -505,22 +502,20 @@ byte VolumeKdtree::encodeNode(int64_t idx, byte compressedParent, byte distanceV
 }
 /*
 void VolumeKdtree::compressTreeRecursive(int64_t idx, int depth, byte compressedParent) {
-
-	// Find scalar value & code for current node
-	byte scalar = encodeNode(idx, depth, compressedParent, true);
-	if (depth == origTreeDepth)
-		recon[idx - firstOrigLeaf] = scalar;
-
-	// Recurse on children
-	//if (depth < treeDepth) {
-	else if (depth < origTreeDepth) {
-		parallel_invoke(
-			[this, idx, depth, scalar] { this->compressTreeRecursive(2 * idx + 1, depth + 1, scalar); },
-			[this, idx, depth, scalar] { this->compressTreeRecursive(2 * idx + 2, depth + 1, scalar); }
-		);
-		//compressTreeRecursive(2*idx + 1, depth + 1, scalar);
-		//compressTreeRecursive(2*idx + 2, depth + 1, scalar);
-	}
+// Find scalar value & code for current node
+byte scalar = encodeNode(idx, depth, compressedParent, true);
+if (depth == origTreeDepth)
+recon[idx - firstOrigLeaf] = scalar;
+// Recurse on children
+//if (depth < treeDepth) {
+else if (depth < origTreeDepth) {
+parallel_invoke(
+[this, idx, depth, scalar] { this->compressTreeRecursive(2 * idx + 1, depth + 1, scalar); },
+[this, idx, depth, scalar] { this->compressTreeRecursive(2 * idx + 2, depth + 1, scalar); }
+);
+//compressTreeRecursive(2*idx + 1, depth + 1, scalar);
+//compressTreeRecursive(2*idx + 2, depth + 1, scalar);
+}
 }
 */
 void VolumeKdtree::save(std::string filename) {
@@ -583,7 +578,7 @@ void VolumeKdtree::open(std::string filename) {
 	is.read(reinterpret_cast<char *>(&Z), sizeof(int64_t));
 	is.read(reinterpret_cast<char *>(&numActiveNodes), sizeof(int64_t));
 
-	int64_t treeSize = fileSize - ((2*sizeof(Point3i)) + ( 2 *sizeof(int)) + maxTreeDepth + 1 + (3 * sizeof(int64_t)));
+	int64_t treeSize = fileSize - ((2 * sizeof(Point3i)) + (2 * sizeof(int)) + maxTreeDepth + 1 + (3 * sizeof(int64_t)));
 	std::cout << treeSize << std::endl;
 
 	// Allocate memory for distanceMap & tree
@@ -608,7 +603,7 @@ bool VolumeKdtree::pruneTreeRecursive(int64_t rootIdx) {
 	// prune subtrees
 	if (rootDepth < origTreeDepth) {
 		if (parallelism) {
-		//if (false) {
+			//if (false) {
 			parallel_invoke(
 				[this, rootIdx, &leftSub] { leftSub = this->pruneTreeRecursive(2 * rootIdx + 1); },
 				[this, rootIdx, &rightSub] { rightSub = this->pruneTreeRecursive(2 * rootIdx + 2); }
@@ -643,7 +638,7 @@ void VolumeKdtree::convertToPreorder() {
 	bool eval; // whether to run encoder
 	int code, depth; // 2-bit node code from 'tree', node depth
 
-	// Initialize output index & stack
+					 // Initialize output index & stack
 	outputIdx = 0;
 	stack.push(std::make_tuple(0, 0, false, -1));
 
@@ -652,7 +647,7 @@ void VolumeKdtree::convertToPreorder() {
 		// Get info of node on top of stack
 		inputIdx = std::get<0>(stack.top());
 		depth = (int)std::get<1>(stack.top());
-		eval = std::get<2>(stack.top()); 
+		eval = std::get<2>(stack.top());
 		zeroStartIdx = std::get<3>(stack.top());
 		code = (int)tree[inputIdx];
 
@@ -678,7 +673,7 @@ void VolumeKdtree::convertToPreorder() {
 					code = 3;
 			}
 		}
-		
+
 		// Insert current node into 'preorderTree'
 		preorderTree[outputIdx++] = code;
 
@@ -703,10 +698,10 @@ void VolumeKdtree::convertToPreorder() {
 			}
 			// Otherwise, add '3' code & continue loop
 			else {
-				stack.push(std::make_tuple(inputIdx, depth + 1, false, zeroStartIdx)); 
+				stack.push(std::make_tuple(inputIdx, depth + 1, false, zeroStartIdx));
 				continue;
 			}
-				
+
 		}
 
 		// If above original tree depth, push both children to stack
@@ -733,7 +728,7 @@ void VolumeKdtree::levelCut(int cutDepth, std::vector<byte> &outData) {
 	// Set global variables
 	output = &outData;
 	queryDepth = cutDepth;
-	  
+
 	// Resize output vector
 	output->resize(X*Y*Z);
 
@@ -769,7 +764,7 @@ void VolumeKdtree::levelCut(int cutDepth, std::vector<byte> &outData) {
 					}
 				}
 			}
-			stack.pop();  
+			stack.pop();
 
 			// Push next right child to stack, if it exists
 			nextRight = idx + 1;
@@ -833,7 +828,7 @@ void VolumeKdtree::levelCut(int cutDepth, std::vector<byte> &outData) {
 				}
 				maxBound[splitDim] = (minBound[splitDim] + maxBound[splitDim]) / 2;
 			}
-			
+
 			stack.push(std::make_tuple(nextLeft, depth + 1, scalar, minBound, maxBound));
 		}
 	}

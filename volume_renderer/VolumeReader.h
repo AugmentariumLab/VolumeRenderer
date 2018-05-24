@@ -88,7 +88,7 @@ public:
 		@param timestep the timestep to load.
 		@return true if brick was successfully loaded
 	*/
-	bool LoadBrickToTexture(int brick, int timestep, bool dealloc) {
+	bool LoadBrickToTexture(int brick, int timestep, bool dealloc, bool toGPU = true) {
 		
 		// load brick data to 'tempBrick' vector
 		bool loadSuccess = LoadVolumeFromBinaryFile(findSourceFile(brick, timestep));
@@ -96,7 +96,8 @@ public:
 		memcpy(dataDims, brickDims, sizeof(dim3D));
 
 		if (loadSuccess) {
-			transferToGPU(dealloc);
+			if (toGPU)
+				transferToGPU(dealloc);
 		}
 		else {
 			std::cout << "ERROR! Texture load failure!" << std::endl;
@@ -147,7 +148,7 @@ public:
 		@return true if all bricks were successfully loaded.
 
 	*/
-	bool LoadBricksToTexture(int64_t numBricks, int64_t I, int64_t J, int64_t K, int timestep, bool dealloc) {
+	bool LoadBricksToTexture(int64_t numBricks, int64_t I, int64_t J, int64_t K, int timestep, bool dealloc, bool toGPU=true) {
 
 		// For easy reference
 		const int64_t X = brickDims[0];
@@ -215,7 +216,8 @@ public:
 		dataDims[2] = K * Z;
 		std::cout << "TEXTURE SIZE: " << (double)(dataDims[0] * dataDims[1] * dataDims[2]) / 1e9 << " GB" << std::endl;
 
-		transferToGPU(dealloc);
+		if (toGPU)
+			transferToGPU(dealloc);
 
 		return success;
 	}

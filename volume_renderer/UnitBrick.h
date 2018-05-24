@@ -42,14 +42,23 @@ public:
 		glGenBuffers(1, &cubeIndsVBO);
 
 		// Unit cube vertices 
-		glm::vec3 vertices[8] = { glm::vec3(-0.5f,-0.5f,-0.25f),
-			glm::vec3(0.5f,-0.5f,-0.25f),
-			glm::vec3(0.5f, 0.5f,-0.25f),
-			glm::vec3(-0.5f, 0.5f,-0.25f),
-			glm::vec3(-0.5f,-0.5f, 0.25f),
-			glm::vec3(0.5f,-0.5f, 0.25f),
-			glm::vec3(0.5f, 0.5f, 0.25f),
-			glm::vec3(-0.5f, 0.5f, 0.25f) };
+		//glm::vec3 vertices[8] = { glm::vec3(-0.5f,-0.5f,-0.25f),
+		//	glm::vec3(0.5f,-0.5f,-0.25f),
+		//	glm::vec3(0.5f, 0.5f,-0.25f),
+		//	glm::vec3(-0.5f, 0.5f,-0.25f),
+		//	glm::vec3(-0.5f,-0.5f, 0.25f),
+		//	glm::vec3(0.5f,-0.5f, 0.25f),
+		//	glm::vec3(0.5f, 0.5f, 0.25f),
+		//	glm::vec3(-0.5f, 0.5f, 0.25f) };
+
+		glm::vec3 vertices[8] = { glm::vec3(-0.5f,-0.5f,-0.5f),
+			glm::vec3(0.5f,-0.5f,-0.5f),
+			glm::vec3(0.5f, 0.5f,-0.5f),
+			glm::vec3(-0.5f, 0.5f,-0.5f),
+			glm::vec3(-0.5f,-0.5f, 0.5f),
+			glm::vec3(0.5f,-0.5f, 0.5f),
+			glm::vec3(0.5f, 0.5f, 0.5f),
+			glm::vec3(-0.5f, 0.5f, 0.5f) };
 
 		// Unit cube indices
 		GLushort cubeIndices[36] = { 0,5,4,

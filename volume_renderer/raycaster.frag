@@ -68,7 +68,8 @@ void main()
 		//accumulated to the composited colour alpha.
 		float prev_alpha = sample - (sample * vFragColor.a);
 		vFragColor.rgb = prev_alpha * vec3(sample) + vFragColor.rgb; 
-		vFragColor.a += prev_alpha; 
+		//vFragColor.a += prev_alpha; 
+		vFragColor.a += prev_alpha * 0.6; 
 			
 		//early ray termination
 		//if the currently composited colour alpha is already fully saturated
@@ -76,4 +77,10 @@ void main()
 		if( vFragColor.a>0.99)
 			break;
 	} 
+	// color transfer equations
+	//vFragColor.r = 255;
+	vFragColor.g = 1- vFragColor.g;
+	//vFragColor.b = 1- vFragColor.b;
+	vFragColor.b = 255;
+	vFragColor.r = 1 - vFragColor.r;
 }

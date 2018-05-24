@@ -33,7 +33,13 @@
     <ClInclude Include="point.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="VolumeKdTree.h">
+    <ClInclude Include="FourBitArray.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="MidRangeTree.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="VolumeKdtree_recover.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -44,7 +50,10 @@
     <ClCompile Include="DebugTimer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="VolumeKdTree.cpp">
+    <ClCompile Include="MidRangeTree.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="VolumeKdTree_recover.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -53,6 +62,12 @@
       <Filter>Source Files</Filter>
     </None>
     <None Include="raycaster.frag">
+      <Filter>Source Files</Filter>
+    </None>
+    <None Include="isosurface.frag">
+      <Filter>Source Files</Filter>
+    </None>
+    <None Include="isosurface.vert">
       <Filter>Source Files</Filter>
     </None>
   </ItemGroup>

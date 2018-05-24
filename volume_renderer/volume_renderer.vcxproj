@@ -120,6 +120,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
+      <OpenMPSupport>true</OpenMPSupport>
     </ClCompile>
     <Link>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
@@ -129,19 +130,24 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="DebugTimer.h" />
+    <ClInclude Include="FourBitArray.h" />
+    <ClInclude Include="MidRangeTree.h" />
     <ClInclude Include="point.h" />
     <ClInclude Include="ShaderProgram.h" />
     <ClInclude Include="TwoBitArray.h" />
     <ClInclude Include="UnitBrick.h" />
-    <ClInclude Include="VolumeKdTree.h" />
+    <ClInclude Include="VolumeKdtree_recover.h" />
     <ClInclude Include="VolumeReader.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="DebugTimer.cpp" />
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="VolumeKdTree.cpp" />
+    <ClCompile Include="MidRangeTree.cpp" />
+    <ClCompile Include="VolumeKdTree_recover.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="isosurface.frag" />
+    <None Include="isosurface.vert" />
     <None Include="raycaster.frag" />
     <None Include="raycaster.vert" />
   </ItemGroup>
